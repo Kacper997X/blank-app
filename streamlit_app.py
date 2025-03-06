@@ -17,7 +17,7 @@ def generate_image_description(image_url):
 
         # Prześlij obraz do OpenAI API
         response = client.chat.completions.create(
-            model="gpt-4o",  # Użyj modelu GPT-4o mini
+            model="gpt-4o-mini",  # Użyj modelu GPT-4o mini
             messages=[
                 {"role": "system", "content": 
                   "Utilize advanced image processing and visual content analysis techniques to accurately identify and describe elements in the image. "
