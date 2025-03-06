@@ -5,8 +5,7 @@ import concurrent.futures
 import requests
 
 # Inicjalizacja klienta OpenAI
-client = OpenAI(api_key='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')
-
+openai.api_key = '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'
 
 # Funkcja do generowania opisu zdjęcia (Krok 1)
 def generate_image_description(image_url):
