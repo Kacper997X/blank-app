@@ -1,0 +1,18 @@
+credentials:
+  usernames:
+    admin:
+      email: admin@example.com
+      name: Administrator
+      password: $2b$12$ggm7OQV.poJku1nc2TN./OzaJ/xufEKENpj0GK1CGO/zXR36FHoTS
+    user1:
+      email: user1@example.com
+      name: "U\u017Cytkownik 1"
+      password: $2b$12$HyL6htHvLnfc99zXiKaY7eUlqFzrepskSc4jjjv8XJ8ZkD9rNiRO.
+
+cookie:
+  expiry_days: 30  # Liczba dni, przez które ciasteczko będzie ważne
+  key: random_signature_key  # Losowy klucz do podpisywania ciasteczka
+  name: random_cookie_name  # Nazwa ciasteczka
+preauthorized:
+  emails:
+    - melsby@gmail.com
