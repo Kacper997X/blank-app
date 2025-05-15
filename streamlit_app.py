@@ -58,15 +58,32 @@ def process_row(row_dict, system_prompt, user_prompt, model, client):
         return f"Błąd: {e}"
 
 def process_rows_in_batches(df, batch_size, system_prompt, user_prompt, model, client):
+    import json
     results = []
     for i in range(0, len(df), batch_size):
         batch = df.iloc[i:i+batch_size]
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            batch_results = list(executor.map(
-                lambda row: process_row(row, system_prompt, user_prompt, model, client),
-                batch.to_dict('records')
-            ))
-        results.extend(batch_results)
+        # Przygotuj listę fraz z batcha
+        keywords = batch['input'].tolist()
+        # Wstaw batch do promptu (każda fraza w osobnej linii)
+        prompt_filled = user_prompt.format(input="\n".join(keywords))
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt_filled},
+                ],
+                temperature=0.7,
+            )
+            # Odbierz odpowiedź modelu (oczekujemy czystego JSONa)
+            content = response.choices[0].message.content.strip()
+            batch_result = json.loads(content)
+            # Przypisz wynik do każdej frazy
+            for keyword in keywords:
+                results.append(batch_result.get(keyword, "BRAK ODPOWIEDZI"))
+        except Exception as e:
+            for _ in keywords:
+                results.append(f"Błąd: {e}")
         time.sleep(1)
     return results
 
@@ -210,8 +227,20 @@ Przykład poprawnej odpowiedzi:
 Tłumacz frazy tak, by były naturalne, poprawne językowo i zgodne z intencją wyszukiwania użytkowników w danym kraju. Unikaj tłumaczenia dosłownego, jeśli lokalny użytkownik użyłby innej frazy. 
 Nie tłumacz nazw własnych i marek. Jeśli fraza jest nieprzetłumaczalna lub nie ma sensu w danym języku, napisz „BRAK ODPOWIEDNIKA”.
 
-Zawsze zwracaj tylko tłumaczenie frazy, bez dodatkowych komentarzy.""",
-                "user": 'Przetłumacz frazę kluczową: "{input}"'
+Zawsze zwracaj tylko tłumaczenie frazy, bez dodatkowych komentarzy.
+
+Przykład odpowiedzi:
+{{
+  "frezarka do paznokci": "nail drill",
+  "paznokcie świąteczne": "christmas nails",
+  "zanokcica paznokcia": "BRAK ODPOWIEDNIKA"
+}}""",
+                "user": """Przetłumacz poniższe frazy kluczowe z języka {z_języka} na {na_język}. 
+Zwróć wynik jako czysty JSON, gdzie kluczem jest oryginalna fraza, a wartością tłumaczenie.
+
+Lista fraz do tłumaczenia (każda w osobnej linii):
+{input}
+"""'
             }
         ]
 
@@ -241,7 +270,7 @@ Zawsze zwracaj tylko tłumaczenie frazy, bez dodatkowych komentarzy.""",
         user_prompt = st.text_area(
             "Prompt użytkownika (np. 'Stwórz opis dla: {input}')",
             value=st.session_state.get('user_prompt', ''),
-            placeholder="Wpisz prompt użytkownika..."
+            placeholder="Wpisz prompt użytkownika...",
         )
         model = st.selectbox("Wybierz model AI", AVAILABLE_MODELS)
         batch_size = st.number_input(
