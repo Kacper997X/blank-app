@@ -82,11 +82,9 @@ def main():
         login(users)
         st.stop()
     else:
-        st.title(f"Witaj, {st.session_state['username']}!")
+        st.title(f"SEO Macerator")
         if st.button("Wyloguj"):
             logout()
-
-        st.header("SEO Macerator")
 
         st.subheader("1. Pobierz wzór pliku CSV")
         st.download_button(
@@ -228,7 +226,7 @@ Zawsze zwracaj tylko tłumaczenie frazy, bez dodatkowych komentarzy.""",
 
         df = None
         if uploaded_file is not None:
-            df = pd.read_csv(uploaded_file)
+            df = pd.read_csv(uploaded_file, encoding="utf-8")
             st.write("Nagłówki pliku CSV:", df.columns.tolist())
             if 'input' not in df.columns:
                 st.error("Plik CSV musi zawierać kolumnę o nazwie 'input'.")
@@ -266,7 +264,7 @@ Zawsze zwracaj tylko tłumaczenie frazy, bez dodatkowych komentarzy.""",
                 st.write(df)
                 st.download_button(
                     label="Pobierz wyniki jako CSV",
-                    data=df.to_csv(index=False).encode('utf-8'),
+                    data=df.to_csv(index=False, encoding="utf-8-sig").encode('utf-8-sig'),
                     file_name="wyniki.csv",
                     mime="text/csv"
                 )
