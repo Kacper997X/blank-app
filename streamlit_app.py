@@ -240,7 +240,7 @@ Zwróć wynik jako czysty JSON, gdzie kluczem jest oryginalna fraza, a wartości
 
 Lista fraz do tłumaczenia (każda w osobnej linii):
 {input}
-"""'
+"""
             }
         ]
 
