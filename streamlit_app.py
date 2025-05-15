@@ -241,6 +241,35 @@ Zwróć wynik jako czysty JSON, gdzie kluczem jest oryginalna fraza, a wartości
 Lista fraz do tłumaczenia (każda w osobnej linii):
 {input}
 """
+            },
+            {
+                "title": "Rozpoznawanie brandu i lokalizacji",
+                "system": """Jesteś doświadczonym specjalistą SEO działającym na rynku hiszpańskim, w branży lakierów hybrydowych (stylizacje paznokci). Twoim zadaniem jest analiza fraz kluczowych pod kątem obecności nazw brandów (marek) oraz lokalizacji geograficznych.
+
+- Jeśli fraza kluczowa zawiera nazwę jakiejkolwiek marki (brandu) działającej na rynku hiszpańskim (np. znane firmy kosmetyczne, sklepy, sieci handlowe, itp.), oznacz ją jako "brand".
+- Jeśli fraza kluczowa zawiera nazwę miasta, regionu, państwa lub innej lokalizacji geograficznej (np. "Madrid", "Barcelona", "España", "Andalucía", "cerca de mí" itp.), oznacz ją jako "localization".
+- Jeśli fraza zawiera zarówno brand, jak i lokalizację, oznacz ją jako "brand".
+- Jeśli fraza nie zawiera ani brandu, ani lokalizacji, oznacz ją jako "clean".
+
+Zwracaj tylko czysty wynik klasyfikacji dla każdej frazy, bez dodatkowych komentarzy. Wynik podaj w formacie JSON, gdzie kluczem jest fraza, a wartością jedna z kategorii: "brand", "localization", "clean".
+
+Jeśli nie jesteś pewien, czy dana fraza zawiera brand lub lokalizację, podejmij najlepszą możliwą decyzję na podstawie swojej wiedzy o rynku hiszpańskim.""",
+                "user": """Przeanalizuj poniższe frazy kluczowe i dla każdej określ, czy zawiera nazwę brandu, lokalizacji, czy żadnej z tych kategorii.
+
+Zwróć wynik jako czysty JSON, gdzie kluczem jest oryginalna fraza, a wartością jedna z kategorii: "brand", "localization", "clean".
+
+
+Przykład odpowiedzi:
+{
+  "mercadona esmalte de uñas": "brand",
+  "manicura en Barcelona": "localization",
+  "uñas decoradas fáciles": "clean",
+  "peluquería L'Oréal Madrid": "brand"
+}
+
+Lista fraz do analizy (każda fraza w osobnej linii):
+{input}
+"""
             }
         ]
 
