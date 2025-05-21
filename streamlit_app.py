@@ -57,14 +57,18 @@ def process_row(row_dict, system_prompt, user_prompt, model, client):
     except Exception as e:
         return f"Błąd: {e}"
 
+def escape_braces(s):
+    """Zamienia { na {{ i } na }} w stringu, by uniknąć KeyError przy .format()"""
+    return str(s).replace('{', '{{').replace('}', '}}')
+
 def process_rows_in_batches(df, batch_size, system_prompt, user_prompt, model, client):
     import json
+    import time
     results = []
     for i in range(0, len(df), batch_size):
         batch = df.iloc[i:i+batch_size]
-        # Przygotuj listę fraz z batcha
-        keywords = batch['input'].tolist()
-        # Wstaw batch do promptu (każda fraza w osobnej linii)
+        # Escapowanie klamer w każdej frazie!
+        keywords = [escape_braces(x) for x in batch['input'].tolist()]
         prompt_filled = user_prompt.format(input="\n".join(keywords))
         try:
             response = client.chat.completions.create(
@@ -75,16 +79,25 @@ def process_rows_in_batches(df, batch_size, system_prompt, user_prompt, model, c
                 ],
                 temperature=0.7,
             )
-            # Odbierz odpowiedź modelu (oczekujemy czystego JSONa)
             content = response.choices[0].message.content.strip()
-            batch_result = json.loads(content)
-            # Przypisz wynik do każdej frazy
-            for keyword in keywords:
-                results.append(batch_result.get(keyword, "BRAK ODPOWIEDZI"))
+            # Sprawdź czy odpowiedź nie jest pusta
+            if not content:
+                for _ in keywords:
+                    results.append("Błąd: Pusta odpowiedź AI")
+                continue
+            try:
+                batch_result = json.loads(content)
+                # batch_result powinien być dict: {fraza: kategoria}
+                for keyword in keywords:
+                    results.append(batch_result.get(keyword, "BRAK ODPOWIEDZI"))
+            except json.JSONDecodeError:
+                # Odpowiedź nie jest poprawnym JSON-em
+                for _ in keywords:
+                    results.append(f"Błąd: Niepoprawny JSON: {content}")
         except Exception as e:
             for _ in keywords:
                 results.append(f"Błąd: {e}")
-        time.sleep(1)
+        time.sleep(1)  # By nie przekroczyć limitów API
     return results
 
 def main():
@@ -164,7 +177,14 @@ Przykłady fraz:
 - gdzie kupić żel do paznokci
 - lampa do paznokci cena
 """,
-                "user": 'Przypisz frazę "{input}" do odpowiedniego etapu ścieżki zakupowej (Awareness, Consideration, Purchase) lub oznacz jako "NIE DOTYCZY". Jako wynik podaj tylko nazwę etapu lub "NIE DOTYCZY".'
+                "user": """Przypisz frazę "{input}" do odpowiedniego etapu ścieżki zakupowej (Awareness, Consideration, Purchase) lub oznacz jako "NIE DOTYCZY". Jako wynik podaj tylko nazwę etapu lub "NIE DOTYCZY".
+           ###  Przykład odpowiedzi:
+{{
+  "uv nagellack": "Consideration",
+  "nagellack stift": "Purchase"
+}}"""
+
+                
             },
             {
                 "title": "Kategoryzacja słów kluczowych",
@@ -258,17 +278,16 @@ Jeśli nie jesteś pewien, czy dana fraza zawiera brand lub lokalizację, podejm
 
 Zwróć wynik jako czysty JSON, gdzie kluczem jest oryginalna fraza, a wartością jedna z kategorii: "brand", "localization", "clean".
 
+Lista fraz do analizy (każda fraza w osobnej linii):
+{input}
 
 Przykład odpowiedzi:
-{
+{{
   "mercadona esmalte de uñas": "brand",
   "manicura en Barcelona": "localization",
   "uñas decoradas fáciles": "clean",
   "peluquería L'Oréal Madrid": "brand"
-}
-
-Lista fraz do analizy (każda fraza w osobnej linii):
-{input}
+}}
 """
             }
         ]
