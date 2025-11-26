@@ -436,7 +436,7 @@ Przykład odpowiedzi:
         st.header("Analiza Semantyczna (Embeddingi)")
         st.markdown("Porównaj wektorowo **Słowo Kluczowe** z dowolnymi innymi kolumnami (np. Tytułem, Opisem).")
 
-        with st.expander("ℹ️ Jak interpretować wyniki? (Ściąga)", expanded=True):
+        with st.expander("ℹ️ Jak interpretować wyniki? (Ściąga)", expanded=False):
             st.markdown("""
             **Similarity Score** to liczba od **0 do 1**, określająca podobieństwo znaczeniowe (semantyczne), a nie tylko obecność słów.
             
