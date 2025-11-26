@@ -29,7 +29,7 @@ def load_users():
         return {}
 
 def login(users):
-    st.title("🔐 Logowanie")
+    st.title("🔐 Witaj w SEO MACERATORZE!")
     username = st.text_input("Nazwa użytkownika")
     password = st.text_input("Hasło", type="password")
     if st.button("Zaloguj"):
@@ -177,13 +177,13 @@ def main():
     st.title("🛠️ SEO Macerator & Semantic Tools")
     
     # --- Zakładki ---
-    tab1, tab2 = st.tabs(["📝 1. Generator Promptów", "🧠 2. Analiza Semantyczna"])
+    tab1, tab2 = st.tabs(["📝 1. SEO Macerator", "🧠 2. Analiza Semantyczna"])
 
     # ==========================================
     # ZAKŁADKA 1: GENERATOR (NIENARUSZONA)
     # ==========================================
     with tab1:
-        st.header("Generator treści / Klasyfikator")
+        st.header("Uniwersalny macerator")
         
         col1, col2 = st.columns([1, 1])
         with col1:
@@ -404,7 +404,7 @@ Przykład odpowiedzi:
             help="Im większa liczba, tym szybciej przetworzysz plik, ale dokładność odpowiedzi AI może być niższa."
         )
 
-        if st.button("🚀 Uruchom przetwarzanie") and df is not None:
+        if st.button("🚀 Maceruję!") and df is not None:
             if not system_prompt or not user_prompt:
                 st.error("Uzupełnij oba prompty.")
             else:
