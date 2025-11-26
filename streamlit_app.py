@@ -29,7 +29,7 @@ def load_users():
         return {}
 
 def login(users):
-    st.title("🔐 Logowanie")
+    st.title("🔐 Witaj w SEO Maceratorze")
     username = st.text_input("Nazwa użytkownika")
     password = st.text_input("Hasło", type="password")
     if st.button("Zaloguj"):
@@ -169,13 +169,13 @@ def main():
     st.title("🛠️ SEO Macerator & Semantic Tools")
     
     # --- Zakładki ---
-    tab1, tab2 = st.tabs(["📝 1. Generator Promptów", "🧠 2. Analiza Semantyczna"])
+    tab1, tab2 = st.tabs(["📝 1. SEO Macerator", "🧠 2. Podobieństwo cosinusowe"])
 
     # ==========================================
     # ZAKŁADKA 1: GENERATOR (Twój kod)
     # ==========================================
     with tab1:
-        st.header("Generator treści / Klasyfikator")
+        st.header("Macerator")
         
         col1, col2 = st.columns([1, 1])
         with col1:
