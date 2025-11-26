@@ -421,42 +421,25 @@ Przykład odpowiedzi:
                     st.error(f"Wystąpił błąd: {e}")
                     st.warning("Upewnij się, że masz ustawiony klucz OPENAI_API_KEY w secrets.")
 
-    # ==========================================
-    # ZAKŁADKA 2: ANALIZA SEMANTYCZNA (Dynamiczna)
+   # ==========================================
+    # ZAKŁADKA 2: ANALIZA SEMANTYCZNA (ZMODYFIKOWANA)
     # ==========================================
     with tab2:
         st.header("Analiza Semantyczna (Embeddingi)")
-        st.markdown("""
-        Narzędzie do porównywania wektorowego słowa kluczowego z wybranymi treściami (np. nagłówki, opisy).
-        Analiza sprawdza, jak bardzo *znaczenie* słowa kluczowego pasuje do treści.
-        """)
+        st.markdown("Porównaj wektorowo **Słowo Kluczowe** z dowolnymi innymi kolumnami (np. Tytułem, Opisem).")
         
-        # --- 1. SEKCJA POBIERANIA PRZYKŁADOWEGO PLIKU ---
-        st.subheader("1. Przygotowanie danych")
-        st.info("Pobierz przykładowy plik, aby zobaczyć wymaganą strukturę (separator średnik ';').")
-        
-        # Tworzenie przykładowych danych
-        example_data = {
-            'keyword': ['buty sportowe', 'kawa ziarnista', 'laptop gamingowy'],
-            'tytul_produktu': ['Najlepsze obuwie do biegania 2024', 'Świeżo palona Arabica 1kg', 'Komputer przenośny do gier RTX 3060'],
-            'opis_produktu': ['Lekkie adidasy z pianką memory.', 'Kawa o nutach czekolady i orzechów.', 'Wydajny procesor i matryca 144Hz.']
-        }
-        df_example = pd.DataFrame(example_data)
-        csv_example = df_example.to_csv(sep=';', index=False).encode('utf-8')
-
+        # Sekcja pobierania szablonu
+        st.subheader("1. Pobierz wzór")
         st.download_button(
-            label="📄 Pobierz przykładowy plik CSV",
-            data=csv_example,
-            file_name="przyklad_analiza_semantyczna.csv",
-            mime="text/csv",
-            help="Pobierz ten plik, aby zobaczyć jak przygotować dane."
+            label="📥 Pobierz przykładowy CSV (Keyword + 2 kolumny)",
+            data=get_semantic_template_v2().to_csv(sep=';', index=False).encode('utf-8'),
+            file_name="wzor_semantyczny.csv",
+            mime="text/csv"
         )
         
-        st.markdown("---")
-
-        # --- 2. UPLOAD PLIKU ---
+        st.subheader("2. Wgraj plik i wybierz kolumny")
         uploaded_sem = st.file_uploader(
-            "📂 Wybierz Twój plik CSV (separator średnik ';')", 
+            "📂 Wybierz plik CSV (separator średnik ';')", 
             type=['csv'], 
             key="sem_uploader"
         )
@@ -464,113 +447,102 @@ Przykład odpowiedzi:
         if uploaded_sem is not None:
             # Używamy klucza z secrets
             try:
-                # Sprawdzenie czy klucz jest dostępny (zakładam, że biblioteka OpenAI jest zaimportowana)
                 api_key = st.secrets["OPENAI_API_KEY"]
                 client = OpenAI(api_key=api_key)
-            except Exception as e:
-                st.error("Brak klucza API w secrets lub błąd inicjalizacji!")
+            except:
+                st.error("Brak klucza API w secrets!")
                 client = None
 
             if client:
                 try:
-                    # Wczytanie z separatorem średnik
-                    df_sem = pd.read_csv(uploaded_sem, sep=';')
+                    # Wczytanie z separatorem średnik (zgodnie z poprzednim standardem)
+                    # Używamy on_bad_lines='skip', żeby nie wywaliło się na błędach formatowania
+                    df_sem = pd.read_csv(uploaded_sem, sep=';', on_bad_lines='skip')
+                    
                     st.success(f"✅ Wczytano plik. Liczba wierszy: {len(df_sem)}")
                     
-                    # Podgląd danych przed wyborem kolumn
-                    with st.expander("👀 Podgląd wczytanych danych (surowe dane)"):
-                        st.dataframe(df_sem.head())
-
-                    st.markdown("### Konfiguracja kolumn")
+                    # --- DYNAMICZNY WYBÓR KOLUMN ---
                     all_columns = df_sem.columns.tolist()
-
-                    col1, col2 = st.columns(2)
                     
-                    # Wybór kolumny z KEYWORDEM (Input A)
-                    with col1:
+                    col1_sem, col2_sem = st.columns(2)
+                    
+                    with col1_sem:
+                        # Wybór kolumny "Głównej" (Słowo kluczowe)
                         keyword_col = st.selectbox(
-                            "Wybierz kolumnę ze Słowem Kluczowym (Keyword):",
+                            "Wybierz kolumnę ze SŁOWEM KLUCZOWYM:", 
                             options=all_columns,
                             index=0
                         )
-
-                    # Wybór kolumn do PORÓWNANIA (Input B i opcjonalnie C)
-                    with col2:
+                    
+                    with col2_sem:
+                        # Wybór kolumn do porównania (filtrujemy, żeby nie wybrać tej samej co keyword)
+                        remaining_cols = [c for c in all_columns if c != keyword_col]
                         compare_cols = st.multiselect(
-                            "Wybierz kolumny do porównania (max 2):",
-                            options=[c for c in all_columns if c != keyword_col], # Wyklucz keyword
-                            max_selections=2,
-                            help="Możesz wybrać np. 'Meta Title' oraz 'Meta Description'."
+                            "Wybierz kolumny do PORÓWNANIA (max 2):",
+                            options=remaining_cols,
+                            default=remaining_cols[:2] if len(remaining_cols) >= 2 else remaining_cols
                         )
 
-                    # --- 3. URUCHOMIENIE ANALIZY ---
+                    # Podgląd danych
+                    with st.expander("👀 Zobacz podgląd danych"):
+                        st.dataframe(df_sem[[keyword_col] + compare_cols].head())
+
                     if st.button("🚀 Uruchom analizę cosinusową"):
-                        
                         if not compare_cols:
-                            st.warning("⚠️ Musisz wybrać przynajmniej jedną kolumnę do porównania!")
+                            st.warning("Musisz wybrać przynajmniej jedną kolumnę do porównania!")
                         else:
-                            progress_text = "Obliczanie embeddingów... to może chwilę potrwać."
+                            progress_text = "Obliczanie embeddingów..."
                             my_bar = st.progress(0, text=progress_text)
                             
                             total_rows = len(df_sem)
                             
-                            # Przygotowanie list na wyniki - dynamicznie dla każdej wybranej kolumny
+                            # Przygotowanie słownika na wyniki {nazwa_kolumny: [lista_wynikow]}
                             results_dict = {col: [] for col in compare_cols}
 
                             for i, row in df_sem.iterrows():
-                                try:
-                                    # 1. Pobierz wektor dla Keyworda (wiersz i, kolumna wybrana)
-                                    kw_text = str(row[keyword_col])
-                                    # Zakładam istnienie funkcji get_embedding(text, client) w Twoim kodzie
-                                    vec_kw = get_embedding(kw_text, client)
+                                # 1. Embedding słowa kluczowego
+                                vec_kw = get_embedding(str(row[keyword_col]), client)
 
-                                    # 2. Pętla po kolumnach wybranych do porównania
-                                    for col_target in compare_cols:
-                                        target_text = str(row[col_target])
-                                        vec_target = get_embedding(target_text, client)
-                                        
-                                        # Zakładam istnienie funkcji cosine_similarity(vec_a, vec_b) w Twoim kodzie
-                                        score = cosine_similarity(vec_kw, vec_target)
-                                        results_dict[col_target].append(round(score, 4))
-                                    
-                                except Exception as e_row:
-                                    # W razie błędu w wierszu wstawiamy 0 lub NaN
-                                    for col_target in compare_cols:
-                                        results_dict[col_target].append(0.0)
+                                # 2. Pętla po kolumnach do porównania
+                                for col_name in compare_cols:
+                                    vec_target = get_embedding(str(row[col_name]), client)
+                                    score = cosine_similarity(vec_kw, vec_target)
+                                    results_dict[col_name].append(round(score, 4))
                                 
-                                # Aktualizacja paska postępu
+                                # Pasek postępu
                                 percent_complete = min((i + 1) / total_rows, 1.0)
                                 my_bar.progress(percent_complete, text=f"Przetwarzanie wiersza {i+1} z {total_rows}")
 
-                            # Zapis wyników do DataFrame
-                            # Tworzymy nowe nazwy kolumn, np. "score_Meta Title"
-                            score_cols_names = []
-                            for col_target, scores in results_dict.items():
-                                new_col_name = f"score_{col_target}"
+                            # Dodanie wyników do DataFrame
+                            # Tworzymy nazwy nowych kolumn np. 'score_match_MetaTitle'
+                            sort_column = None
+                            
+                            for col_name, scores in results_dict.items():
+                                new_col_name = f"score_match_{col_name}"
                                 df_sem[new_col_name] = scores
-                                score_cols_names.append(new_col_name)
+                                # Zapamiętujemy ostatnią kolumnę wyniku do sortowania
+                                sort_column = new_col_name
 
-                            # Sortowanie (według wyniku pierwszej wybranej kolumny)
-                            first_score_col = score_cols_names[0]
-                            df_sem = df_sem.sort_values(by=first_score_col, ascending=True) # Rosnąco (najsłabsze na górze)
+                            # Sortowanie (rosnąco - najgorsze dopasowania na górze)
+                            if sort_column:
+                                df_sem = df_sem.sort_values(by=sort_column, ascending=True)
                             
                             my_bar.empty()
                             st.success("🎉 Analiza zakończona!")
 
-                            st.write("### Wyniki (posortowane od najgorszego dopasowania):")
-                            
-                            # Wyświetlamy: Keyword + Wybrane kolumny treści + Wyliczone wyniki
-                            cols_to_show = [keyword_col] + compare_cols + score_cols_names
-                            st.dataframe(df_sem[cols_to_show].head(15))
+                            st.write("### Wyniki (posortowane wg dopasowania ostatniej kolumny):")
+                            st.dataframe(df_sem.head(10))
 
-                            # Pobieranie
-                            csv_output = df_sem.to_csv(sep=';', index=False).encode('utf-8')
                             st.download_button(
                                 label="📥 Pobierz Raport Finalny (CSV)",
-                                data=csv_output,
-                                file_name=f"RAPORT_SEMANTYCZNY_{uploaded_sem.name}",
+                                data=df_sem.to_csv(sep=';', index=False).encode('utf-8'),
+                                file_name=f"RAPORT_FINALNY_{uploaded_sem.name}",
                                 mime='text/csv',
                             )
 
                 except Exception as e:
-                    st.error(f"Wystąpił błąd krytyczny podczas przetwarzania: {e}")
+                    st.error(f"Wystąpił błąd podczas przetwarzania pliku: {e}")
+                    st.info("Spróbuj sprawdzić czy plik jest poprawnym CSV rozdzielonym średnikami.")
+
+if __name__ == "__main__":
+    main()
