@@ -12,7 +12,7 @@ from openai import OpenAI
 st.set_page_config(page_title="SEO Macerator & Semantic Tool", layout="wide")
 
 USER_DATA_PATH = 'users.json'
-AVAILABLE_MODELS = ["gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
+AVAILABLE_MODELS = ["gpt-4o-mini", "gpt-5-mini","gpt-5-nano"]
 
 # ==========================================
 # FUNKCJE UWIERZYTELNIANIA
@@ -396,7 +396,7 @@ Przykład odpowiedzi:
             help="Im większa liczba, tym szybciej przetworzysz plik, ale dokładność odpowiedzi AI może być niższa."
         )
 
-        if st.button("🚀 Uruchom przetwarzanie") and df is not None:
+        if st.button("🚀 Maceruj!") and df is not None:
             if not system_prompt or not user_prompt:
                 st.error("Uzupełnij oba prompty.")
             else:
