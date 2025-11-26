@@ -12,7 +12,7 @@ from openai import OpenAI
 st.set_page_config(page_title="SEO Macerator & Semantic Tool", layout="wide")
 
 USER_DATA_PATH = 'users.json'
-AVAILABLE_MODELS = ["gpt-4o-mini", "gpt-5-mini","gpt-5-nano"]
+AVAILABLE_MODELS = ["gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
 
 # ==========================================
 # FUNKCJE UWIERZYTELNIANIA
@@ -29,7 +29,7 @@ def load_users():
         return {}
 
 def login(users):
-    st.title("🔐 Witaj w SEO Maceratorze")
+    st.title("🔐 Logowanie")
     username = st.text_input("Nazwa użytkownika")
     password = st.text_input("Hasło", type="password")
     if st.button("Zaloguj"):
@@ -104,7 +104,6 @@ def process_rows_in_batches(df, batch_size, system_prompt, user_prompt, model, c
                     
             except json.JSONDecodeError:
                 # Odpowiedź nie jest poprawnym JSON-em - zapisujemy błąd dla całego batcha
-                # Ale staramy się, żeby użytkownik widział co poszło nie tak
                 for _ in keywords:
                     results.append(f"Błąd JSON: {content[:100]}...")
                     
@@ -123,9 +122,17 @@ def process_rows_in_batches(df, batch_size, system_prompt, user_prompt, model, c
 # ==========================================
 # FUNKCJE LOGICZNE - TAB 2 (EMBEDDINGI)
 # ==========================================
+def get_semantic_template_v2():
+    """Generuje wzór pliku dla narzędzia semantycznego"""
+    return pd.DataFrame({
+        'Keyword': ['buty do biegania', 'krem nawilżający'],
+        'Input1 (np. Title)': ['Najlepsze obuwie sportowe Nike', 'Krem do twarzy na dzień'],
+        'Input2 (np. Desc)': ['Sprawdź naszą ofertę butów do biegania w terenie.', 'Lekka formuła nawilżająca skórę.']
+    })
+
 def get_embedding(text, client):
     """Pobiera wektor z OpenAI (text-embedding-3-large)."""
-    # Zabezpieczenie przed pustymi polami (NaN)
+    # Zabezpieczenie przed pustymi polami (NaN) lub brakiem tekstu
     if not isinstance(text, str) or not text.strip():
         return np.zeros(3072) # Zwraca wektor zerowy
 
@@ -136,6 +143,7 @@ def get_embedding(text, client):
             model="text-embedding-3-large"
         ).data[0].embedding
     except Exception as e:
+        # W razie błędu zwracamy wektor zerowy, żeby nie wywalić całego procesu
         return np.zeros(3072)
 
 def cosine_similarity(a, b):
@@ -169,13 +177,13 @@ def main():
     st.title("🛠️ SEO Macerator & Semantic Tools")
     
     # --- Zakładki ---
-    tab1, tab2 = st.tabs(["📝 1. SEO Macerator", "🧠 2. Podobieństwo cosinusowe"])
+    tab1, tab2 = st.tabs(["📝 1. Generator Promptów", "🧠 2. Analiza Semantyczna"])
 
     # ==========================================
-    # ZAKŁADKA 1: GENERATOR (Twój kod)
+    # ZAKŁADKA 1: GENERATOR (NIENARUSZONA)
     # ==========================================
     with tab1:
-        st.header("Macerator")
+        st.header("Generator treści / Klasyfikator")
         
         col1, col2 = st.columns([1, 1])
         with col1:
@@ -396,7 +404,7 @@ Przykład odpowiedzi:
             help="Im większa liczba, tym szybciej przetworzysz plik, ale dokładność odpowiedzi AI może być niższa."
         )
 
-        if st.button("🚀 Maceruj!") and df is not None:
+        if st.button("🚀 Uruchom przetwarzanie") and df is not None:
             if not system_prompt or not user_prompt:
                 st.error("Uzupełnij oba prompty.")
             else:
@@ -421,7 +429,7 @@ Przykład odpowiedzi:
                     st.error(f"Wystąpił błąd: {e}")
                     st.warning("Upewnij się, że masz ustawiony klucz OPENAI_API_KEY w secrets.")
 
-   # ==========================================
+    # ==========================================
     # ZAKŁADKA 2: ANALIZA SEMANTYCZNA (ZMODYFIKOWANA)
     # ==========================================
     with tab2:
