@@ -78,7 +78,6 @@ def process_rows_in_batches(df, batch_size, system_prompt, user_prompt, model, c
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt_filled},
                 ],
-                temperature=0.7,
             )
             content = response.choices[0].message.content.strip()
             
