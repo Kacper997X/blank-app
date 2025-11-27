@@ -173,7 +173,7 @@ def main():
     if st.sidebar.button("Wyloguj"):
         logout()
     
-    st.title("🛠️ SEO Macerator & Semantic Tools")
+    st.title("🛠️ SEO Narzędzia")
     
     # --- Zakładki ---
     tab1, tab2 = st.tabs(["📝 1. SEO Macerator", "🧠 2. Analiza Semantyczna"])
@@ -182,7 +182,7 @@ def main():
     # ZAKŁADKA 1: GENERATOR (NIENARUSZONA)
     # ==========================================
     with tab1:
-        st.header("Uniwersalny macerator")
+        st.header("Uniwersalny SEO Macerator")
             
         col1, col2 = st.columns([1, 1])
         with col1:
