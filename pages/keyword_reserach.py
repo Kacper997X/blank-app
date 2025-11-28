@@ -61,12 +61,12 @@ def generate_seeds(main_keyword, context, api_key):
         st.error(f"Błąd OpenAI: {e}")
         return [main_keyword]
 
-# --- FUNKCJA 2: POBIERANIE Z SENUTO ---
+# --- FUNKCJA 2: POBIERANIE Z SENUTO (Wersja v3 - Poprawny Endpoint) ---
 def fetch_from_senuto(seeds, api_key):
     results = []
     
-    # AKTUALIZACJA 1: Poprawny URL endpointu
-    url = "https://api.senuto.com/api/keyword-explorer/related-keywords"
+    # 1. Nowy, poprawny adres endpointu
+    url = "https://api.senuto.com/api/keywords_analysis/reports/keywords/getKeywords"
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -76,11 +76,23 @@ def fetch_from_senuto(seeds, api_key):
     progress_bar = st.progress(0)
     
     for i, seed in enumerate(seeds):
-        # AKTUALIZACJA 2: Poprawna struktura zapytania i ID kraju (Polska = 42)
+        # 2. Nowa struktura payloadu (zgodna z Twoim CURLem)
         payload = {
-            "keyword": seed,    # Czasami 'query', czasami 'keyword' - zależy od wersji, próbujemy 'keyword'
-            "country_id": 42,   # 42 to ID Polski w Senuto
-            "limit": 50
+            "parameters": [
+                {
+                    "data_fetch_mode": "keyword",
+                    "value": [seed]  # Senuto oczekuje listy, nawet dla jednego słowa
+                }
+            ],
+            # ID Kraju: Z Twojego JSON-a wynika, że Polska to 1.
+            "country_id": 1, 
+            "match_mode": "wide", # "wide" da nam szerokie dopasowanie (related keywords)
+            "filtering": [
+                {
+                    "filters": []
+                }
+            ],
+            "limit": 50 # Ograniczamy liczbę wyników na start
         }
         
         try:
@@ -89,30 +101,30 @@ def fetch_from_senuto(seeds, api_key):
             if response.status_code == 200:
                 data = response.json()
                 
-                # AKTUALIZACJA 3: Bezpieczniejsze parsowanie (Senuto może zwracać dane różnie)
-                if data.get('success', True): # Czasami success jest domyślne
-                    # Szukamy listy słów w 'data' lub bezpośrednio
-                    keywords_list = data.get('data', [])
+                if data.get('success', False):
+                    # Senuto w tym endpoincie zazwyczaj zwraca dane w kluczu 'data'
+                    items = data.get('data', [])
                     
-                    if not keywords_list and isinstance(data, list):
-                        keywords_list = data
-                        
-                    for k in keywords_list:
-                        # Wyciągamy dane, z zabezpieczeniem przed brakującymi kluczami
+                    for item in items:
                         results.append({
-                            "Keyword": k.get('keyword', k.get('name')),
-                            "Search Volume": k.get('avg_monthly_searches', 0),
-                            "CPC": k.get('cpc', 0),
+                            "Keyword": item.get('keyword', item.get('name', '')),
+                            "Search Volume": item.get('avg_monthly_searches', 0),
+                            "CPC": item.get('cpc', 0),
+                            # Czasami Senuto zwraca trendy, warto sprawdzić czy istnieją
+                            "Trends": str(item.get('trends', '')), 
                             "Source Seed": seed
                         })
+                else:
+                    # Jeśli success = false, ale kod 200
+                    st.warning(f"Senuto zwróciło pusty wynik dla: {seed}")
             else:
-                # WAŻNE: Wyświetlamy treść błędu z Senuto, żeby wiedzieć co jest nie tak
-                st.error(f"Błąd Senuto dla '{seed}': Kod {response.status_code}")
-                with st.expander(f"Szczegóły błędu dla {seed}"):
-                    st.write(response.text) # Pokaże nam komunikat od twórców API
+                st.error(f"Błąd API dla '{seed}': {response.status_code}")
+                # Debugowanie: Pokażemy co dokładnie zwrócił serwer, żebyś mógł mi wkleić w razie problemów
+                with st.expander(f"Treść błędu dla {seed}"):
+                    st.write(response.text)
                 
         except Exception as e:
-            st.error(f"Krytyczny błąd połączenia: {e}")
+            st.error(f"Błąd połączenia: {e}")
         
         progress_bar.progress((i + 1) / len(seeds))
         
