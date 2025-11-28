@@ -1,172 +1,109 @@
 import streamlit as st
-import pandas as pd
-import openai
 import requests
 import json
 
-# --- ZABEZPIECZENIE STRONY (Musi być na samej górze) ---
-if 'logged_in' not in st.session_state or not st.session_state['logged_in']:
-    st.warning("⚠️ Musisz się najpierw zalogować na stronie głównej!")
-    st.stop() # Zatrzymuje ładowanie reszty kodu
-    
-# --- Pasek boczny z informacją o użytkowniku ---
+st.set_page_config(page_title="Senuto Lab", layout="wide")
+
+st.title("🧪 Laboratorium API Senuto")
+st.markdown("""
+To narzędzie służy do znalezienia działającego połączenia.
+Będziesz potrzebować otwartej dokumentacji Senuto.
+""")
+
+# --- 1. KONFIGURACJA KLUCZA ---
 with st.sidebar:
-    if 'username' in st.session_state and st.session_state['username']:
-        st.write(f"Zalogowany jako: **{st.session_state['username']}**")
+    st.header("🔑 Ustawienia")
+    # Pobieramy klucz z secrets, jeśli jest
+    default_key = st.secrets.get("SENUTO_API_KEY", "")
+    api_key = st.text_input("Twój Bearer Token", value=default_key, type="password")
     
-    # Przycisk powrotu do menu głównego (opcjonalnie)
-    st.page_link("streamlit_app.py", label="🏠 Wróć do strony głównej")
+    st.info("Token powinien być długim ciągiem znaków.")
 
-# --- KONFIGURACJA PODSTRONY ---
-st.set_page_config(page_title="Keyword Research (Senuto)", layout="wide")
+# --- 2. TEST POŁĄCZENIA (Autoryzacja) ---
+st.subheader("1. Test Autoryzacji")
+st.caption("Sprawdźmy, czy Twój klucz API jest poprawny, pytając o dane zalogowanego użytkownika.")
 
-st.title("🔍 Senuto AI Keyword Researcher")
-
-# --- POBIERANIE KLUCZY (Z Secrets lub Inputu) ---
-# Zalecane: Trzymaj klucze w pliku .streamlit/secrets.toml
-# Wtedy pobierasz je tak: st.secrets["SENUTO_KEY"]
-# Tutaj dla ułatwienia dajemy pole input, jeśli secrets nie istnieją.
-
-if "OPENAI_API_KEY" in st.secrets:
-    openai_key = st.secrets["OPENAI_API_KEY"]
-else:
-    openai_key = st.sidebar.text_input("Klucz OpenAI", type="password")
-
-if "SENUTO_API_KEY" in st.secrets:
-    senuto_key = st.secrets["SENUTO_API_KEY"]
-else:
-    senuto_key = st.sidebar.text_input("Klucz Senuto", type="password")
-
-# --- FUNKCJA 1: GENEROWANIE SEEDÓW (AI) ---
-def generate_seeds(main_keyword, context, api_key):
-    if not api_key: return [main_keyword]
-    
-    client = openai.Client(api_key=api_key)
-    prompt = f"""
-    Jesteś ekspertem SEO.
-    Słowo główne: {main_keyword}
-    Kontekst: {context}
-    
-    Wypisz 5-8 precyzyjnych fraz kluczowych (tzw. seed keywords), które wpiszemy do narzędzia Senuto, aby znaleźć najlepsze słowa kluczowe pasujące do tego kontekstu.
-    Zwróć wynik jako listę oddzieloną przecinkami, np.: rower damski, rower miejski, holenderka
-    """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        text = response.choices[0].message.content
-        return [x.strip() for x in text.split(',')]
-    except Exception as e:
-        st.error(f"Błąd OpenAI: {e}")
-        return [main_keyword]
-
-# --- FUNKCJA 2: POBIERANIE Z SENUTO (Wersja v3 - Poprawny Endpoint) ---
-def fetch_from_senuto(seeds, api_key):
-    results = []
-    
-    # 1. Nowy, poprawny adres endpointu
-    url = "https://api.senuto.com/api/keywords_analysis/reports/keywords/getKeywords"
-    
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-
-    progress_bar = st.progress(0)
-    
-    for i, seed in enumerate(seeds):
-        # 2. Nowa struktura payloadu (zgodna z Twoim CURLem)
-        payload = {
-            "parameters": [
-                {
-                    "data_fetch_mode": "keyword",
-                    "value": [seed]  # Senuto oczekuje listy, nawet dla jednego słowa
-                }
-            ],
-            # ID Kraju: Z Twojego JSON-a wynika, że Polska to 1.
-            "country_id": 1, 
-            "match_mode": "wide", # "wide" da nam szerokie dopasowanie (related keywords)
-            "filtering": [
-                {
-                    "filters": []
-                }
-            ],
-            "limit": 50 # Ograniczamy liczbę wyników na start
+if st.button("🔍 Sprawdź klucz (/api/users/getLoggedUser)"):
+    if not api_key:
+        st.error("Wpisz klucz API w pasku bocznym!")
+    else:
+        url = "https://api.senuto.com/api/users/getLoggedUser"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
         }
-        
         try:
-            response = requests.post(url, headers=headers, json=payload)
-            
+            response = requests.get(url, headers=headers)
             if response.status_code == 200:
-                data = response.json()
-                
-                if data.get('success', False):
-                    # Senuto w tym endpoincie zazwyczaj zwraca dane w kluczu 'data'
-                    items = data.get('data', [])
-                    
-                    for item in items:
-                        results.append({
-                            "Keyword": item.get('keyword', item.get('name', '')),
-                            "Search Volume": item.get('avg_monthly_searches', 0),
-                            "CPC": item.get('cpc', 0),
-                            # Czasami Senuto zwraca trendy, warto sprawdzić czy istnieją
-                            "Trends": str(item.get('trends', '')), 
-                            "Source Seed": seed
-                        })
-                else:
-                    # Jeśli success = false, ale kod 200
-                    st.warning(f"Senuto zwróciło pusty wynik dla: {seed}")
+                st.success("✅ SUKCES! Klucz działa.")
+                st.json(response.json())
             else:
-                st.error(f"Błąd API dla '{seed}': {response.status_code}")
-                # Debugowanie: Pokażemy co dokładnie zwrócił serwer, żebyś mógł mi wkleić w razie problemów
-                with st.expander(f"Treść błędu dla {seed}"):
-                    st.write(response.text)
-                
+                st.error(f"❌ BŁĄD: {response.status_code}")
+                st.write("Serwer odpowiedział:")
+                st.text(response.text)
         except Exception as e:
             st.error(f"Błąd połączenia: {e}")
-        
-        progress_bar.progress((i + 1) / len(seeds))
-        
-    return pd.DataFrame(results)
 
-# --- INTERFEJS UŻYTKOWNIKA ---
+st.divider()
 
-col1, col2 = st.columns(2)
+# --- 3. TEST KEYWORD EXPLORER ---
+st.subheader("2. Test Keyword Explorer")
+st.markdown("Tutaj wklej endpoint z sekcji **Keyword Explorer** ze swojej dokumentacji.")
+
+col1, col2 = st.columns([3, 1])
 with col1:
-    main_kw = st.text_input("Główne słowo kluczowe", "CRM dla małej firmy")
+    # Domyślnie wpisuję najbardziej prawdopodobny adres
+    endpoint = st.text_input("Endpoint URL", "https://api.senuto.com/api/keywords/explorer/related")
 with col2:
-    desc = st.text_area("Opis klienta / Cel", "Software house sprzedający prosty CRM, nie chcemy fraz darmowych ani Excela.")
+    method = st.selectbox("Metoda", ["POST", "GET"])
 
-if st.button("🚀 Rozpocznij Research"):
-    if not senuto_key:
-        st.error("Brakuje klucza Senuto API!")
+# Domyślny JSON dla Keyword Explorer
+default_body = """{
+    "query": "rowery",
+    "country_id": 1,
+    "limit": 5
+}"""
+
+body = st.text_area("Body (JSON)", value=default_body, height=150)
+
+if st.button("🚀 Wyślij zapytanie testowe"):
+    if not api_key:
+        st.error("Brak klucza API!")
     else:
-        # 1. AI generuje pomysły
-        with st.spinner("AI analizuje kontekst i tworzy zapytania..."):
-            seeds = generate_seeds(main_kw, desc, openai_key)
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
         
-        st.success("Wygenerowane zapytania (Seeds):")
-        st.write(", ".join(seeds))
+        st.write(f"Wysyłam {method} na: `{endpoint}`")
         
-        # 2. Senuto pobiera dane
-        with st.spinner("Pobieram dane z Senuto..."):
-            df = fetch_from_senuto(seeds, senuto_key)
+        try:
+            if method == "GET":
+                response = requests.get(endpoint, headers=headers)
+            else:
+                # Parsowanie JSON z pola tekstowego
+                try:
+                    json_data = json.loads(body)
+                except:
+                    st.error("Błąd w formacie JSON! Sprawdź przecinki i cudzysłowy.")
+                    st.stop()
+                    
+                response = requests.post(endpoint, headers=headers, json=json_data)
             
-        if not df.empty:
-            st.subheader(f"Znaleziono {len(df)} słów kluczowych")
+            # Wynik
+            st.write(f"Status: **{response.status_code}**")
             
-            # Usuwanie duplikatów (bo różne seedy mogą zwrócić to samo)
-            df = df.drop_duplicates(subset=['Keyword'])
-            
-            # Wyświetlanie tabeli
-            st.dataframe(df, use_container_width=True)
-            
-            # Zapis do CSV
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("Pobierz CSV", csv, "keyword_research.csv", "text/csv")
-            
-            # Zapis do session state (żeby dane nie zniknęły przy klikaniu w tabeli)
-            st.session_state['senuto_results'] = df
-        else:
-            st.warning("Nie znaleziono słów kluczowych lub wystąpił błąd API.")
+            if response.status_code == 200:
+                st.success("Działa! Oto dane:")
+                st.json(response.json())
+            elif response.status_code == 404:
+                st.error("404 Not Found - Ten endpoint nie istnieje.")
+                st.info("Sprawdź w dokumentacji sekcję 'Keyword Explorer'. Adres może być inny.")
+            elif response.status_code == 401:
+                st.error("401 Unauthorized - Token nie ma dostępu do tego modułu.")
+            else:
+                st.error("Inny błąd.")
+                st.text(response.text)
+                
+        except Exception as e:
+            st.error(f"Krytyczny błąd: {e}")
