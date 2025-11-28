@@ -6,3 +6,4 @@ streamlit_authenticator
 pyyaml
 bcrypt
 numpy
+python-docx
