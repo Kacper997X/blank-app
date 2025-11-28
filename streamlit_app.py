@@ -8,7 +8,6 @@ from openai import OpenAI
 import re
 from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
-from streamlit_quill import st_quill
 
 # ==========================================
 # KONFIGURACJA I STAŁE
@@ -249,63 +248,9 @@ def cosine_similarity(a, b):
 # FUNKCJE LOGICZNE - TAB 3 (GENERATOR NEWSLETTERA)
 # ==========================================
 
-def clean_text_with_links(text):
-    """
-    Prosta funkcja, która zamienia:
-    1. **tekst** na <b>tekst</b>
-    2. Linki w formacie [tekst](url) na <a href="url" ...>tekst</a> (jeśli ktoś tak wpisze)
-    3. Automatycznie podlinkowuje "http..." jeśli nie jest w tagu.
-    """
-    # Obsługa boldowania w stylu Markdown (**tekst**)
-    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
-    
-    # Obsługa linków w stylu Markdown [Tekst](url) - opcjonalnie, dla wygody
-    text = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2" style="color: #33D76F; font-weight: bold;">\1</a>', text)
-    
-    return text
 
-def generate_newsletter_html(date_str, data):
-    """Generuje pełny HTML na podstawie Twojego wzoru."""
-    
-    # --- 1. SEKCJE HTML (Zdefiniowane na podstawie wzoru) ---
-    HEADER = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Podsumowanie tygodnia</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f3f3;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" align="center">
-        <tr>
-            <td align="center">
-                <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff; border: 1px solid #ddd;">
-                    <!-- Logo firmy -->
-                    <tr>
-                        <td style="background-color: #000000; padding: 20px; text-align: center;">
-                            <img src="https://www.performics.com/pl/wp-content/uploads/2015/10/performics-logo248x43.png" alt="Logo Firmy" width="150" style="display: block; margin: 0 auto;">
-                        </td>
-                    </tr>
-                    <!-- Nagłówek -->
-                    <tr>
-                        <td style="background-color: #000000; color: white; text-align: center; padding: 20px; font-size: 22px; font-weight: bold;">
-                            📢 Podsumowanie tygodnia{f' – {date_str}' if date_str else ''}
-                        </td>
-                    </tr>"""
 
-    FOOTER = """
-                    <!-- Stopka -->
-                    <tr>
-                        <td style="background-color: #000000; color: white; text-align: center; padding: 15px; font-size: 14px;">
-                            &copy; Performics | Wszystkie prawa zastrzeżone
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>"""
+
 
     # Funkcja generująca pojedynczą sekcję
     def make_section(title, icon, content_list, bg_color="#fafafa"):
@@ -390,30 +335,6 @@ def parse_docx(file):
             
     return parsed_data
 
-# ==========================================
-# FUNKCJE NEWSLETTERA (WORD + AI)
-# ==========================================
-def get_docx_text_with_links(doc):
-    """Wyciąga tekst z Worda zachowując linki w formacie Markdown [text](url)."""
-    full_text_list = []
-    rels = doc.part.rels
-    for paragraph in doc.paragraphs:
-        if not paragraph.text.strip(): continue
-        p_text = ""
-        for child in paragraph._element:
-            if child.tag.endswith('r') and child.text:
-                p_text += child.text
-            elif child.tag.endswith('hyperlink'):
-                try:
-                    rId = child.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
-                    if rId in rels:
-                        url = rels[rId].target_ref
-                        link_text = "".join([node.text for node in child.iter() if node.tag.endswith('t')])
-                        if link_text and url: p_text += f" [{link_text}]({url}) "
-                        else: p_text += link_text
-                except: pass
-        full_text_list.append(p_text)
-    return full_text_list
 
 
 # ==========================================
