@@ -819,71 +819,122 @@ Przykład odpowiedzi:
                     st.error(f"Wystąpił błąd podczas przetwarzania pliku: {e}")
                     st.info("Spróbuj sprawdzić czy plik jest poprawnym CSV rozdzielonym średnikami.")
 
-    # ==========================================
-# FUNKCJE NEWSLETTERA (WORD + AI)
 # ==========================================
-def get_docx_text_with_links(doc):
-    """Wyciąga tekst z Worda zachowując linki w formacie Markdown [text](url)."""
-    full_text_list = []
-    rels = doc.part.rels
-    for paragraph in doc.paragraphs:
-        if not paragraph.text.strip(): continue
-        p_text = ""
-        for child in paragraph._element:
-            if child.tag.endswith('r') and child.text:
-                p_text += child.text
-            elif child.tag.endswith('hyperlink'):
+    # ZAKŁADKA 3: GENERATOR Z AI
+    # ==========================================
+    with tab3:
+        st.header("Generator Newslettera HTML z AI")
+        st.markdown("""
+        **Instrukcja:**
+        1. Wgraj plik Word (zachowamy linki).
+        2. Kliknij **Wczytaj tekst**.
+        3. Kliknij **Auto-Formatowanie AI**, aby GPT sformatowało listę i pogrubiło marki/nazwiska.
+        """)
+
+        # 1. Inicjalizacja stanu (żeby dane nie znikały przy klikaniu przycisków)
+        if 'news_data' not in st.session_state:
+            st.session_state['news_data'] = {
+                "breaking": "",
+                "general": "",
+                "products": "",
+                "clients": "",
+                "tenders": ""
+            }
+
+        col_input, col_preview = st.columns([1, 1])
+
+        with col_input:
+            st.subheader("1. Treść i Edycja")
+            uploaded_doc = st.file_uploader("Wgraj plik .docx", type="docx", key="news_doc")
+            date_str = st.text_input("Data newslettera (np. 29 Listopada)", "29 Listopada")
+
+            # --- KROK 1: Wczytanie z Worda ---
+            if uploaded_doc and st.button("📂 1. Wczytaj tekst z pliku"):
                 try:
-                    rId = child.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
-                    if rId in rels:
-                        url = rels[rId].target_ref
-                        link_text = "".join([node.text for node in child.iter() if node.tag.endswith('t')])
-                        if link_text and url: p_text += f" [{link_text}]({url}) "
-                        else: p_text += link_text
-                except: pass
-        full_text_list.append(p_text)
-    return full_text_list
+                    parsed = parse_docx_advanced(uploaded_doc)
+                    # Zapisujemy surowy tekst do stanu, łącząc linie znakiem nowej linii
+                    for key in parsed:
+                        st.session_state['news_data'][key] = "\n".join(parsed[key])
+                    st.success("Tekst wczytany! Teraz możesz użyć AI do formatowania.")
+                except Exception as e:
+                    st.error(f"Błąd odczytu pliku: {e}")
 
-def parse_docx_advanced(file):
-    doc = Document(file)
-    raw_lines = get_docx_text_with_links(doc)
-    parsed_data = {"breaking": [], "general": [], "products": [], "clients": [], "tenders": []}
-    current_section = None
-    for line in raw_lines:
-        text = line.strip()
-        text_lower = text.lower()
-        if "breaking news" in text_lower: current_section = "breaking"; continue
-        elif "informacje ogólne" in text_lower: current_section = "general"; continue
-        elif "produkty" in text_lower and "usługi" in text_lower: current_section = "products"; continue
-        elif "projekty" in text_lower or "aktualnych klientach" in text_lower: current_section = "clients"; continue
-        elif "przetargi" in text_lower: current_section = "tenders"; continue
-        if current_section and text: parsed_data[current_section].append(text)
-    return parsed_data
+            st.markdown("---")
 
-def ai_format_text(text_list, client, model="gpt-4o-mini"):
-    """Prosi AI o sformatowanie HTML i pogrubienie kluczowych fraz."""
-    if not text_list: return ""
-    input_text = "\n".join(text_list)
-    system_prompt = """Jesteś redaktorem newslettera. Sformatuj tekst na listę HTML (same tagi <li>).
-    1. Zwróć TYLKO elementy <li>...</li> (bez <ul>).
-    2. POGRUB (używając <b>...</b>): Imiona i nazwiska, Marki (np. Google, Media Markt), Nazwy własne narzędzi/firm, Ważne daty.
-    3. Linki Markdown [tekst](url) zamień na: <a href="url" style="color: #33D76F; font-weight: bold;">tekst</a>.
-    4. Styl punktu: <li style="margin-bottom: 10px;">.
-    """
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": input_text}]
-        )
-        return response.choices[0].message.content.strip().replace("```html", "").replace("```", "").replace("<ul>", "").replace("</ul>", "")
-    except Exception as e: return f"<!-- Błąd AI: {e} -->\n" + "\n".join([f"<li>{t}</li>" for t in text_list])
+            # --- KROK 2: AI Formatowanie ---
+            if st.button("✨ 2. Auto-Formatowanie AI (Boldy & Linki)"):
+                # Sprawdzamy czy jest jakikolwiek tekst do przerobienia
+                if not any(st.session_state['news_data'].values()):
+                    st.warning("Najpierw wczytaj plik Word lub wpisz tekst ręcznie!")
+                else:
+                    try:
+                        api_key = st.secrets["OPENAI_API_KEY"]
+                        client = OpenAI(api_key=api_key)
 
-def create_section_html_raw(title, icon, html_content, bg_color="#ffffff"):
-    if not html_content: return ""
-    return f"""
-        <tr><td style="padding: 20px; background-color: {bg_color}; color: #000000;">
-        <b style="color: #33D76F;">{icon} {title}:</b><br><br>
-        <ul style="padding-left: 20px;">{html_content}</ul></td></tr>"""
+                        with st.status("AI pracuje nad tekstem...", expanded=True):
+                            # Mapowanie kluczy na nazwy wyświetlane (dla estetyki paska postępu)
+                            sections_map = {
+                                'breaking': "Breaking News",
+                                'general': "Informacje ogólne",
+                                'products': "Produkty",
+                                'clients': "Klienci",
+                                'tenders': "Przetargi"
+                            }
+
+                            for key, name in sections_map.items():
+                                content = st.session_state['news_data'][key]
+                                if content.strip(): # Tylko jeśli sekcja nie jest pusta
+                                    st.write(f"Formatowanie sekcji: {name}...")
+                                    # Dzielimy na linie, żeby wysłać jako listę do funkcji
+                                    formatted_html = ai_format_text(content.split('\n'), client)
+                                    st.session_state['news_data'][key] = formatted_html
+                            
+                        st.success("Gotowe! AI sformatowało tekst, dodało <b> i poprawiło linki.")
+                    
+                    except Exception as e:
+                        st.error(f"Błąd API OpenAI: {e}")
+                        st.info("Sprawdź czy masz poprawny klucz API w pliku secrets.")
+
+            st.markdown("### Edycja (HTML)")
+            st.caption("Możesz tutaj ręcznie poprawić to, co wygenerowało AI.")
+
+            # Pola tekstowe edytują bezpośrednio stan sesji (value=st.session_state...)
+            st.session_state['news_data']['breaking'] = st.text_area("Breaking News", value=st.session_state['news_data']['breaking'], height=150)
+            st.session_state['news_data']['general'] = st.text_area("Informacje ogólne", value=st.session_state['news_data']['general'], height=150)
+            st.session_state['news_data']['products'] = st.text_area("Produkty, usługi", value=st.session_state['news_data']['products'], height=150)
+            st.session_state['news_data']['clients'] = st.text_area("Projekty na klientach", value=st.session_state['news_data']['clients'], height=200)
+            st.session_state['news_data']['tenders'] = st.text_area("Przetargi/prospekty", value=st.session_state['news_data']['tenders'], height=150)
+
+        with col_preview:
+            st.subheader("2. Podgląd HTML")
+
+            # Składanie finalnego HTML z kawałków
+            full_html = HTML_HEADER.format(date_str=date_str)
+            # Używamy create_section_html_raw, bo tekst jest już HTML-em z tagami <li> i <b>
+            full_html += create_section_html_raw("Breaking News", "📢", st.session_state['news_data']['breaking'], "#fafafa")
+            full_html += create_section_html_raw("Informacje ogólne", "📌", st.session_state['news_data']['general'], "#fafafa")
+            full_html += create_section_html_raw("Produkty, usługi", "🛠", st.session_state['news_data']['products'], "#ffffff")
+            full_html += create_section_html_raw("Projekty na aktualnych Klientach", "📊", st.session_state['news_data']['clients'], "#fafafa")
+            full_html += create_section_html_raw("Przetargi/prospekty", "📢", st.session_state['news_data']['tenders'], "#ffffff")
+            full_html += HTML_FOOTER
+
+            # Zakładki podglądu
+            subtab_preview, subtab_code = st.tabs(["👁️ Render", "💻 Kod źródłowy"])
+
+            with subtab_preview:
+                st.components.v1.html(full_html, height=800, scrolling=True)
+
+            with subtab_code:
+                st.code(full_html, language='html')
+
+            # Przycisk pobierania
+            file_name_clean = f"newsletter_{date_str.replace(' ', '_')}.html"
+            st.download_button(
+                label="📥 POBIERZ GOTOWY PLIK HTML",
+                data=full_html,
+                file_name=file_name_clean,
+                mime="text/html"
+            )
 
 if __name__ == "__main__":
     main()
