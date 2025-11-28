@@ -432,7 +432,7 @@ Przykład odpowiedzi:
     # ZAKŁADKA 2: ANALIZA SEMANTYCZNA (ZMODYFIKOWANA)
     # ==========================================
     with tab2:
-        st.header("Analiza Semantyczna (Embeddingi)")
+        st.header("Analiza Semantyczna (Embeddingi i Cosinusy)")
         st.markdown("Porównaj wektorowo **Słowo Kluczowe** z dowolnymi innymi kolumnami (np. Tytułem, Opisem).")
 
         with st.expander("ℹ️ Jak interpretować wyniki? (Ściąga)", expanded=False):
