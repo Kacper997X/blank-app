@@ -21,7 +21,7 @@ with st.sidebar:
 
 # --- 2. TEST POŁĄCZENIA (Autoryzacja) ---
 st.subheader("1. Test Autoryzacji")
-st.caption("Sprawdźmy, czy Twój klucz API jest poprawny, pytając o dane zalogowanego użytkownika.")
+st.caption("Sprawdźmy, czy Twój klucz API jest poprawny, pytając o dane zalogowanego użytkownika (zgodnie z Twoją dokumentacją).")
 
 if st.button("🔍 Sprawdź klucz (/api/users/getLoggedUser)"):
     if not api_key:
@@ -35,8 +35,14 @@ if st.button("🔍 Sprawdź klucz (/api/users/getLoggedUser)"):
         try:
             response = requests.get(url, headers=headers)
             if response.status_code == 200:
-                st.success("✅ SUKCES! Klucz działa.")
-                st.json(response.json())
+                st.success("✅ SUKCES! Twój klucz jest poprawny.")
+                st.write("Twoje uprawnienia:")
+                data = response.json()
+                # Wyświetlamy sekcję ACCESS, żeby zobaczyć czy masz dostęp do Keyword Explorera
+                if 'data' in data and 'access' in data['data']:
+                    st.json(data['data']['access'])
+                else:
+                    st.json(data)
             else:
                 st.error(f"❌ BŁĄD: {response.status_code}")
                 st.write("Serwer odpowiedział:")
@@ -47,12 +53,13 @@ if st.button("🔍 Sprawdź klucz (/api/users/getLoggedUser)"):
 st.divider()
 
 # --- 3. TEST KEYWORD EXPLORER ---
-st.subheader("2. Test Keyword Explorer")
-st.markdown("Tutaj wklej endpoint z sekcji **Keyword Explorer** ze swojej dokumentacji.")
+st.subheader("2. Test Keyword Explorer (Ręczny)")
+st.markdown("Otwórz dokumentację w sekcji **Keyword Explorer**. Znajdź tam endpoint do pobierania słów (np. 'Related Keywords') i przepisz go tutaj.")
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    # Domyślnie wpisuję najbardziej prawdopodobny adres
+    # Tutaj wpisz adres, który znajdziesz w dokumentacji w sekcji Keyword Explorer
+    # Najczęstszy adres to: https://api.senuto.com/api/keywords/explorer/related
     endpoint = st.text_input("Endpoint URL", "https://api.senuto.com/api/keywords/explorer/related")
 with col2:
     method = st.selectbox("Metoda", ["POST", "GET"])
@@ -64,7 +71,7 @@ default_body = """{
     "limit": 5
 }"""
 
-body = st.text_area("Body (JSON)", value=default_body, height=150)
+body = st.text_area("Body (JSON) - tylko dla POST", value=default_body, height=150)
 
 if st.button("🚀 Wyślij zapytanie testowe"):
     if not api_key:
