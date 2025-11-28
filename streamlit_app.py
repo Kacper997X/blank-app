@@ -367,38 +367,102 @@ def get_docx_text_with_links(doc):
     return full_text_list
 
 def parse_docx_advanced(file):
+    """
+    Ulepszony parser: lepiej wykrywa sekcje i usuwa nagłówki z treści.
+    """
     doc = Document(file)
     raw_lines = get_docx_text_with_links(doc)
-    parsed_data = {"breaking": [], "general": [], "products": [], "clients": [], "tenders": []}
+    
+    parsed_data = {
+        "breaking": [],
+        "general": [],
+        "products": [],
+        "clients": [],
+        "tenders": []
+    }
+    
     current_section = None
+    
     for line in raw_lines:
         text = line.strip()
+        if not text:
+            continue
+            
         text_lower = text.lower()
-        if "breaking news" in text_lower: current_section = "breaking"; continue
-        elif "informacje ogólne" in text_lower: current_section = "general"; continue
-        elif "produkty" in text_lower and "usługi" in text_lower: current_section = "products"; continue
-        elif "projekty" in text_lower or "aktualnych klientach" in text_lower: current_section = "clients"; continue
-        elif "przetargi" in text_lower: current_section = "tenders"; continue
-        if current_section and text: parsed_data[current_section].append(text)
+        
+        # Wykrywanie sekcji - słowa kluczowe
+        # Używamy 'continue', żeby NIE dodawać linii nagłówka do treści sekcji
+        if "breaking news" in text_lower:
+            current_section = "breaking"
+            continue
+        elif "informacje ogólne" in text_lower:
+            current_section = "general"
+            continue
+        elif "produkty" in text_lower and "usługi" in text_lower:
+            current_section = "products"
+            continue
+        elif "projekty" in text_lower or "aktualnych klientach" in text_lower:
+            current_section = "clients"
+            continue
+        elif "przetargi" in text_lower or "prospekty" in text_lower:
+            current_section = "tenders"
+            continue
+        elif "stopka" in text_lower: # Zabezpieczenie przed wczytaniem stopki
+            current_section = None
+            continue
+            
+        # Dodawanie treści tylko jeśli jesteśmy w sekcji
+        if current_section:
+            parsed_data[current_section].append(text)
+            
     return parsed_data
 
 def ai_format_text(text_list, client, model="gpt-4o-mini"):
-    """Prosi AI o sformatowanie HTML i pogrubienie kluczowych fraz."""
-    if not text_list: return ""
-    input_text = "\n".join(text_list)
-    system_prompt = """Jesteś redaktorem newslettera. Sformatuj tekst na listę HTML (same tagi <li>).
-    1. Zwróć TYLKO elementy <li>...</li> (bez <ul>).
-    2. POGRUB (używając <b>...</b>): Imiona i nazwiska, Marki (np. Google, Media Markt), Nazwy własne narzędzi/firm, Ważne daty.
-    3. Linki Markdown [tekst](url) zamień na: <a href="url" style="color: #33D76F; font-weight: bold;">tekst</a>.
-    4. Styl punktu: <li style="margin-bottom: 10px;">.
     """
+    Ulepszony prompt: Lepiej radzi sobie z listami i pogrubieniami.
+    """
+    if not text_list:
+        return ""
+        
+    input_text = "\n".join(text_list)
+    
+    system_prompt = """Jesteś redaktorem newslettera firmowego Performics. 
+Twoim zadaniem jest sformatowanie surowego tekstu na listę HTML.
+
+INSTRUKCJA:
+1. Podziel tekst na logiczne punkty. Zazwyczaj jeden akapit lub myślnik w tekście źródłowym to jeden punkt listy <li>.
+2. Zwróć wynik JAKO CZYSTY KOD HTML, składający się WYŁĄCZNIE z tagów <li>treść</li>. Nie dodawaj <ul> ani <html>.
+3. Styl każdego punktu musi być taki: <li style="margin-bottom: 10px;">...</li>
+4. ZACHOWAJ LINKI: Jeśli w tekście jest link Markdown [tekst](url), zamień go na: <a href="url" style="color: #33D76F; font-weight: bold; text-decoration: none;">tekst</a>.
+5. FORMATOWANIE (BARDZO WAŻNE):
+   - Wyszukaj i POGRUB (używając <b>...</b>) wszystkie:
+     * Imiona i nazwiska pracowników (np. Jan Kowalski)
+     * Nazwy marek i klientów (np. Media Markt, Samsung, Google)
+     * Nazwy narzędzi (np. Yotta, FlowAI, Trade Desk)
+     * Kluczowe daty (np. Black Friday, rok 2026, 4 grudnia)
+     * Nazwy działów (np. SEO, SEM)
+   
+6. Nie dodawaj nagłówków sekcji (np. "Informacje ogólne:") do treści punktów.
+7. Nie zmieniaj sensu zdań, popraw jedynie ewidentne błędy interpunkcyjne.
+"""
+
     try:
         response = client.chat.completions.create(
             model=model,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": input_text}]
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Oto surowy tekst sekcji do sformatowania:\n\n{input_text}"}
+            ],
+            temperature=0.1 # Niska temperatura, żeby AI nie wymyślało treści
         )
-        return response.choices[0].message.content.strip().replace("```html", "").replace("```", "").replace("<ul>", "").replace("</ul>", "")
-    except Exception as e: return f"<!-- Błąd AI: {e} -->\n" + "\n".join([f"<li>{t}</li>" for t in text_list])
+        # Czyszczenie odpowiedzi z markdownowych znaczników kodu, jeśli AI je doda
+        content = response.choices[0].message.content.strip()
+        content = content.replace("```html", "").replace("```", "").strip()
+        content = content.replace("<ul>", "").replace("</ul>", "")
+        return content
+        
+    except Exception as e:
+        return f"<!-- Błąd AI: {e} -->\n" + "\n".join([f'<li style="margin-bottom: 10px;">{t}</li>' for t in text_list])
 
 def create_section_html_raw(title, icon, html_content, bg_color="#ffffff"):
     if not html_content: return ""
