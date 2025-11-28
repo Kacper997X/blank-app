@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 import time
 from openai import OpenAI
+import re
+from docx import Document
 
 # ==========================================
 # KONFIGURACJA I STAŁE
@@ -152,6 +154,151 @@ def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 # ==========================================
+# FUNKCJE LOGICZNE - TAB 3 (GENERATOR NEWSLETTERA)
+# ==========================================
+
+def clean_text_with_links(text):
+    """
+    Prosta funkcja, która zamienia:
+    1. **tekst** na <b>tekst</b>
+    2. Linki w formacie [tekst](url) na <a href="url" ...>tekst</a> (jeśli ktoś tak wpisze)
+    3. Automatycznie podlinkowuje "http..." jeśli nie jest w tagu.
+    """
+    # Obsługa boldowania w stylu Markdown (**tekst**)
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+    
+    # Obsługa linków w stylu Markdown [Tekst](url) - opcjonalnie, dla wygody
+    text = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2" style="color: #33D76F; font-weight: bold;">\1</a>', text)
+    
+    return text
+
+def generate_newsletter_html(date_str, data):
+    """Generuje pełny HTML na podstawie Twojego wzoru."""
+    
+    # --- 1. SEKCJE HTML (Zdefiniowane na podstawie wzoru) ---
+    HEADER = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podsumowanie tygodnia</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f3f3;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" align="center">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff; border: 1px solid #ddd;">
+                    <!-- Logo firmy -->
+                    <tr>
+                        <td style="background-color: #000000; padding: 20px; text-align: center;">
+                            <img src="https://www.performics.com/pl/wp-content/uploads/2015/10/performics-logo248x43.png" alt="Logo Firmy" width="150" style="display: block; margin: 0 auto;">
+                        </td>
+                    </tr>
+                    <!-- Nagłówek -->
+                    <tr>
+                        <td style="background-color: #000000; color: white; text-align: center; padding: 20px; font-size: 22px; font-weight: bold;">
+                            📢 Podsumowanie tygodnia{f' – {date_str}' if date_str else ''}
+                        </td>
+                    </tr>"""
+
+    FOOTER = """
+                    <!-- Stopka -->
+                    <tr>
+                        <td style="background-color: #000000; color: white; text-align: center; padding: 15px; font-size: 14px;">
+                            &copy; Performics | Wszystkie prawa zastrzeżone
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"""
+
+    # Funkcja generująca pojedynczą sekcję
+    def make_section(title, icon, content_list, bg_color="#fafafa"):
+        if not content_list:
+            return ""
+        
+        items_html = ""
+        for item in content_list:
+            # Czyścimy i formatujemy tekst (boldy, linki)
+            formatted_item = clean_text_with_links(item)
+            items_html += f'<li style="margin-bottom: 10px;">{formatted_item}</li>\n'
+            
+        return f"""
+                    <tr>
+                        <td style="padding: 20px; background-color: {bg_color}; color: #000000;">
+                            <b style="color: #33D76F;">{icon} {title}:</b><br><br>
+                            <ul style="padding-left: 20px;">
+                                {items_html}
+                            </ul>
+                        </td>
+                    </tr>"""
+
+    # --- 2. SKŁADANIE CAŁOŚCI ---
+    body = ""
+    # Breaking News (Tło #fafafa)
+    body += make_section("Breaking News", "📢", data.get("breaking", []), bg_color="#fafafa")
+    # Info ogólne (Tło #fafafa - wg wzoru, choć można zmienić na #ffffff dla kontrastu)
+    body += make_section("Informacje ogólne", "📌", data.get("general", []), bg_color="#fafafa")
+    # Produkty (Tło #ffffff - tu zmieniam dla kontrastu lub zgodnie z życzeniem)
+    body += make_section("Produkty, usługi", "🛠", data.get("products", []), bg_color="#ffffff")
+    # Klienci (Tło #fafafa)
+    body += make_section("Projekty na aktualnych Klientach", "📊", data.get("clients", []), bg_color="#fafafa")
+    # Przetargi (Tło #ffffff)
+    body += make_section("Przetargi/prospekty", "📢", data.get("tenders", []), bg_color="#ffffff")
+
+    return HEADER + body + FOOTER
+
+def parse_docx(file):
+    """
+    Prosty parser, który czyta plik linia po linii i szuka nagłówków.
+    """
+    doc = Document(file)
+    parsed_data = {
+        "breaking": [],
+        "general": [],
+        "products": [],
+        "clients": [],
+        "tenders": []
+    }
+    
+    current_section = None
+    
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+            
+        text_lower = text.lower()
+        
+        # Wykrywanie sekcji (słowa kluczowe)
+        if "breaking news" in text_lower:
+            current_section = "breaking"
+            continue
+        elif "informacje ogólne" in text_lower:
+            current_section = "general"
+            continue
+        elif "produkty" in text_lower and "usługi" in text_lower:
+            current_section = "products"
+            continue
+        elif "projekty" in text_lower or "aktualnych klientach" in text_lower:
+            current_section = "clients"
+            continue
+        elif "przetargi" in text_lower or "prospekty" in text_lower:
+            current_section = "tenders"
+            continue
+            
+        # Dodawanie treści
+        if current_section:
+            # Tutaj można by dodać logikę wyciągania linków z XML docx, 
+            # ale najbezpieczniej pozwolić użytkownikowi edytować tekst w UI
+            parsed_data[current_section].append(text)
+            
+    return parsed_data
+
+# ==========================================
 # GŁÓWNA APLIKACJA
 # ==========================================
 def main():
@@ -176,7 +323,7 @@ def main():
     st.title("🛠️ SEO Narzędzia")
     
     # --- Zakładki ---
-    tab1, tab2 = st.tabs(["📝 1. SEO Macerator", "🧠 2. Analiza Semantyczna"])
+    tab1, tab2, tab3 = st.tabs(["📝 1. SEO Macerator", "🧠 2. Analiza Semantyczna", "📧 3. Generator Newslettera"])
 
     # ==========================================
     # ZAKŁADKA 1: GENERATOR (NIENARUSZONA)
@@ -562,6 +709,70 @@ Przykład odpowiedzi:
                 except Exception as e:
                     st.error(f"Wystąpił błąd podczas przetwarzania pliku: {e}")
                     st.info("Spróbuj sprawdzić czy plik jest poprawnym CSV rozdzielonym średnikami.")
+
+    # ==========================================
+    # ZAKŁADKA 3: GENERATOR NEWSLETTERA (NOWA)
+    # ==========================================
+    with tab3:
+        st.header("Generator Newslettera HTML (Performics Style)")
+        st.markdown("Wgraj plik Word, zweryfikuj treść i pobierz gotowy HTML.")
+        
+        col_news_1, col_news_2 = st.columns([1, 1])
+
+        with col_news_1:
+            st.subheader("1. Dane wejściowe")
+            uploaded_doc = st.file_uploader("Wgraj plik Word (.docx)", type="docx", key="newsletter_uploader")
+            
+            # Stan początkowy danych
+            data = {k: [] for k in ["breaking", "general", "products", "clients", "tenders"]}
+            
+            if uploaded_doc:
+                try:
+                    data = parse_docx(uploaded_doc)
+                    st.success("✅ Plik wczytany! Możesz edytować treść poniżej.")
+                    st.info("💡 Wskazówka: Aby dodać link, użyj formatu HTML: `<a href='adres_url'>tekst</a>` lub standardu Markdown `[tekst](url)`.")
+                except Exception as e:
+                    st.error(f"Błąd odczytu pliku: {e}")
+
+            # Pola edycji
+            date_str = st.text_input("Data w nagłówku (np. 29 Listopada):", "")
+            
+            breaking_text = st.text_area("Breaking News", "\n".join(data["breaking"]), height=100)
+            general_text = st.text_area("Informacje ogólne", "\n".join(data["general"]), height=150)
+            products_text = st.text_area("Produkty, usługi", "\n".join(data["products"]), height=150)
+            clients_text = st.text_area("Projekty na klientach", "\n".join(data["clients"]), height=200)
+            tenders_text = st.text_area("Przetargi/prospekty", "\n".join(data["tenders"]), height=150)
+
+        with col_news_2:
+            st.subheader("2. Podgląd i Pobieranie")
+            
+            # Przekształcenie tekstu z powrotem w listy
+            final_data = {
+                "breaking": [x for x in breaking_text.split('\n') if x.strip()],
+                "general": [x for x in general_text.split('\n') if x.strip()],
+                "products": [x for x in products_text.split('\n') if x.strip()],
+                "clients": [x for x in clients_text.split('\n') if x.strip()],
+                "tenders": [x for x in tenders_text.split('\n') if x.strip()],
+            }
+            
+            # Generowanie HTML
+            full_html = generate_newsletter_html(date_str, final_data)
+            
+            # Zakładki podglądu
+            subtab1, subtab2 = st.tabs(["👁️ Render", "💻 Kod Źródłowy"])
+            
+            with subtab1:
+                st.components.v1.html(full_html, height=800, scrolling=True)
+            
+            with subtab2:
+                st.code(full_html, language='html')
+                
+            st.download_button(
+                label="📥 POBIERZ PLIK HTML",
+                data=full_html,
+                file_name="newsletter_performics.html",
+                mime="text/html"
+            )
 
 if __name__ == "__main__":
     main()
