@@ -8,6 +8,7 @@ from openai import OpenAI
 import re
 from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from streamlit_quill import st_quill
 
 # ==========================================
 # KONFIGURACJA I STAŁE
@@ -419,31 +420,24 @@ def parse_docx_advanced(file):
 
 def ai_format_text(text_list, client, model="gpt-4o-mini"):
     """
-    Ulepszony prompt: Lepiej radzi sobie z listami i pogrubieniami.
+    Formatowanie tekstu przez AI z zachowaniem struktury HTML.
     """
     if not text_list:
         return ""
         
     input_text = "\n".join(text_list)
     
-    system_prompt = """Jesteś redaktorem newslettera firmowego Performics. 
-Twoim zadaniem jest sformatowanie surowego tekstu na listę HTML.
+    # Zmieniony prompt, który zabrania dzielenia akapitów
+    system_prompt = """Jesteś redaktorem newslettera firmowego.
+Twoim zadaniem jest sformatowanie tekstu na listę HTML <ul>...</ul>.
 
-INSTRUKCJA:
-1. Podziel tekst na logiczne punkty. Zazwyczaj jeden akapit lub myślnik w tekście źródłowym to jeden punkt listy <li>.
-2. Zwróć wynik JAKO CZYSTY KOD HTML, składający się WYŁĄCZNIE z tagów <li>treść</li>. Nie dodawaj <ul> ani <html>.
-3. Styl każdego punktu musi być taki: <li style="margin-bottom: 10px;">...</li>
-4. ZACHOWAJ LINKI: Jeśli w tekście jest link Markdown [tekst](url), zamień go na: <a href="url" style="color: #33D76F; font-weight: bold; text-decoration: none;">tekst</a>.
-5. FORMATOWANIE (BARDZO WAŻNE):
-   - Wyszukaj i POGRUB (używając <b>...</b>) wszystkie:
-     * Imiona i nazwiska pracowników (np. Jan Kowalski)
-     * Nazwy marek i klientów (np. Media Markt, Samsung, Google)
-     * Nazwy narzędzi (np. Yotta, FlowAI, Trade Desk)
-     * Kluczowe daty (np. Black Friday, rok 2026, 4 grudnia)
-     * Nazwy działów (np. SEO, SEM)
-   
-6. Nie dodawaj nagłówków sekcji (np. "Informacje ogólne:") do treści punktów.
-7. Nie zmieniaj sensu zdań, popraw jedynie ewidentne błędy interpunkcyjne.
+ZASADY KRYTYCZNE:
+1. JEDEN AKAPIT WEJŚCIOWY = JEDEN PUNKT LISTY <li>. Absolutnie NIE dziel jednego akapitu/zdania na wiele punktów.
+2. Zwróć wynik jako kompletny blok HTML: <ul><li>Treść 1</li><li>Treść 2</li></ul>.
+3. Styl dla każdego <li> musi być taki: <li style="margin-bottom: 10px;">
+4. Linki Markdown [tekst](url) zamień na: <a href="url" style="color: #33D76F; font-weight: bold; text-decoration: none;">tekst</a>.
+5. POGRUBIAJ (<b>...</b>): Imiona i nazwiska, Marki (np. Media Markt, Google), Narzędzia, Kluczowe Daty.
+6. Nie dodawaj żadnego tekstu/komentarza poza kodem HTML.
 """
 
     try:
@@ -451,18 +445,18 @@ INSTRUKCJA:
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Oto surowy tekst sekcji do sformatowania:\n\n{input_text}"}
+                {"role": "user", "content": f"Sformatuj ten tekst:\n{input_text}"}
             ],
-            temperature=0.1 # Niska temperatura, żeby AI nie wymyślało treści
+            temperature=0.1
         )
-        # Czyszczenie odpowiedzi z markdownowych znaczników kodu, jeśli AI je doda
         content = response.choices[0].message.content.strip()
+        # Usuwamy znaczniki markdown kodu, jeśli AI je dodało
         content = content.replace("```html", "").replace("```", "").strip()
-        content = content.replace("<ul>", "").replace("</ul>", "")
         return content
         
     except Exception as e:
-        return f"<!-- Błąd AI: {e} -->\n" + "\n".join([f'<li style="margin-bottom: 10px;">{t}</li>' for t in text_list])
+        # Fallback w przypadku błędu
+        return "<ul>" + "".join([f'<li style="margin-bottom: 10px;">{t}</li>' for t in text_list]) + "</ul>"
 
 def create_section_html_raw(title, icon, html_content, bg_color="#ffffff"):
     if not html_content: return ""
@@ -884,26 +878,21 @@ Przykład odpowiedzi:
                     st.info("Spróbuj sprawdzić czy plik jest poprawnym CSV rozdzielonym średnikami.")
 
 # ==========================================
-    # ZAKŁADKA 3: GENERATOR Z AI
+    # ZAKŁADKA 3: GENERATOR Z AI + WYSIWYG
     # ==========================================
     with tab3:
-        st.header("Generator Newslettera HTML z AI")
+        st.header("Generator Newslettera HTML z AI (Edytor Wizualny)")
         st.markdown("""
         **Instrukcja:**
-        1. Wgraj plik Word (zachowamy linki).
-        2. Kliknij **Wczytaj tekst**.
-        3. Kliknij **Auto-Formatowanie AI**, aby GPT sformatowało listę i pogrubiło marki/nazwiska.
+        1. Wgraj plik Word -> Kliknij **Wczytaj tekst**.
+        2. Kliknij **Auto-Formatowanie AI**, aby GPT przygotowało wersję roboczą.
+        3. **Edytuj tekst w polach poniżej** (możesz pogrubiać, dodawać linki, poprawiać listy).
+        4. Pobierz gotowy HTML.
         """)
 
-        # 1. Inicjalizacja stanu (żeby dane nie znikały przy klikaniu przycisków)
+        # Inicjalizacja stanu
         if 'news_data' not in st.session_state:
-            st.session_state['news_data'] = {
-                "breaking": "",
-                "general": "",
-                "products": "",
-                "clients": "",
-                "tenders": ""
-            }
+            st.session_state['news_data'] = {"breaking": "", "general": "", "products": "", "clients": "", "tenders": ""}
 
         col_input, col_preview = st.columns([1, 1])
 
@@ -916,89 +905,83 @@ Przykład odpowiedzi:
             if uploaded_doc and st.button("📂 1. Wczytaj tekst z pliku"):
                 try:
                     parsed = parse_docx_advanced(uploaded_doc)
-                    # Zapisujemy surowy tekst do stanu, łącząc linie znakiem nowej linii
                     for key in parsed:
                         st.session_state['news_data'][key] = "\n".join(parsed[key])
-                    st.success("Tekst wczytany! Teraz możesz użyć AI do formatowania.")
+                    st.success("Tekst wczytany!")
                 except Exception as e:
                     st.error(f"Błąd odczytu pliku: {e}")
 
             st.markdown("---")
 
             # --- KROK 2: AI Formatowanie ---
-            if st.button("✨ 2. Auto-Formatowanie AI (Boldy & Linki)"):
-                # Sprawdzamy czy jest jakikolwiek tekst do przerobienia
+            if st.button("✨ 2. Auto-Formatowanie AI"):
                 if not any(st.session_state['news_data'].values()):
-                    st.warning("Najpierw wczytaj plik Word lub wpisz tekst ręcznie!")
+                    st.warning("Najpierw wczytaj plik!")
                 else:
                     try:
                         api_key = st.secrets["OPENAI_API_KEY"]
                         client = OpenAI(api_key=api_key)
-
-                        with st.status("AI pracuje nad tekstem...", expanded=True):
-                            # Mapowanie kluczy na nazwy wyświetlane (dla estetyki paska postępu)
-                            sections_map = {
-                                'breaking': "Breaking News",
-                                'general': "Informacje ogólne",
-                                'products': "Produkty",
-                                'clients': "Klienci",
-                                'tenders': "Przetargi"
-                            }
-
+                        with st.status("AI formatuje tekst...", expanded=True):
+                            sections_map = {'breaking': "Breaking News", 'general': "Info Ogólne", 'products': "Produkty", 'clients': "Klienci", 'tenders': "Przetargi"}
                             for key, name in sections_map.items():
                                 content = st.session_state['news_data'][key]
-                                if content.strip(): # Tylko jeśli sekcja nie jest pusta
-                                    st.write(f"Formatowanie sekcji: {name}...")
-                                    # Dzielimy na linie, żeby wysłać jako listę do funkcji
-                                    formatted_html = ai_format_text(content.split('\n'), client)
-                                    st.session_state['news_data'][key] = formatted_html
-                            
-                        st.success("Gotowe! AI sformatowało tekst, dodało <b> i poprawiło linki.")
-                    
+                                if content.strip(): 
+                                    st.write(f"Przetwarzanie: {name}...")
+                                    st.session_state['news_data'][key] = ai_format_text(content.split('\n'), client)
+                        st.success("Gotowe! Możesz teraz edytować wynik poniżej.")
                     except Exception as e:
-                        st.error(f"Błąd API OpenAI: {e}")
-                        st.info("Sprawdź czy masz poprawny klucz API w pliku secrets.")
+                        st.error(f"Błąd API: {e}")
 
-            st.markdown("### Edycja (HTML)")
-            st.caption("Możesz tutaj ręcznie poprawić to, co wygenerowało AI.")
-
-            # Pola tekstowe edytują bezpośrednio stan sesji (value=st.session_state...)
-            st.session_state['news_data']['breaking'] = st.text_area("Breaking News", value=st.session_state['news_data']['breaking'], height=150)
-            st.session_state['news_data']['general'] = st.text_area("Informacje ogólne", value=st.session_state['news_data']['general'], height=150)
-            st.session_state['news_data']['products'] = st.text_area("Produkty, usługi", value=st.session_state['news_data']['products'], height=150)
-            st.session_state['news_data']['clients'] = st.text_area("Projekty na klientach", value=st.session_state['news_data']['clients'], height=200)
-            st.session_state['news_data']['tenders'] = st.text_area("Przetargi/prospekty", value=st.session_state['news_data']['tenders'], height=150)
+            st.markdown("### 📝 Edycja Wizualna (WYSIWYG)")
+            st.info("Tutaj możesz poprawić tekst, pogrubienia i linki jak w Wordzie.")
+            
+            # --- EDYTORY QUILL ---
+            # Każdy edytor musi mieć unikalny klucz.
+            
+            st.caption("📢 Breaking News")
+            breaking_html = st_quill(value=st.session_state['news_data']['breaking'], html=True, key="quill_breaking")
+            
+            st.caption("📌 Informacje Ogólne")
+            general_html = st_quill(value=st.session_state['news_data']['general'], html=True, key="quill_general")
+            
+            st.caption("🛠 Produkty, usługi")
+            products_html = st_quill(value=st.session_state['news_data']['products'], html=True, key="quill_products")
+            
+            st.caption("📊 Projekty na klientach")
+            clients_html = st_quill(value=st.session_state['news_data']['clients'], html=True, key="quill_clients")
+            
+            st.caption("📢 Przetargi")
+            tenders_html = st_quill(value=st.session_state['news_data']['tenders'], html=True, key="quill_tenders")
 
         with col_preview:
             st.subheader("2. Podgląd HTML")
 
-            # Składanie finalnego HTML z kawałków
+            # Składamy HTML z wartości zwróconych przez edytory Quill (zmienne *_html),
+            # a jeśli edytor jeszcze nic nie zwrócił (np. przy pierwszym ładowaniu), bierzemy ze stanu.
+            
+            final_breaking = breaking_html if breaking_html else st.session_state['news_data']['breaking']
+            final_general = general_html if general_html else st.session_state['news_data']['general']
+            final_products = products_html if products_html else st.session_state['news_data']['products']
+            final_clients = clients_html if clients_html else st.session_state['news_data']['clients']
+            final_tenders = tenders_html if tenders_html else st.session_state['news_data']['tenders']
+
+            # Używamy create_section_html_raw, która po prostu wkleja gotowy HTML z edytora
             full_html = HTML_HEADER.format(date_str=date_str)
-            # Używamy create_section_html_raw, bo tekst jest już HTML-em z tagami <li> i <b>
-            full_html += create_section_html_raw("Breaking News", "📢", st.session_state['news_data']['breaking'], "#fafafa")
-            full_html += create_section_html_raw("Informacje ogólne", "📌", st.session_state['news_data']['general'], "#fafafa")
-            full_html += create_section_html_raw("Produkty, usługi", "🛠", st.session_state['news_data']['products'], "#ffffff")
-            full_html += create_section_html_raw("Projekty na aktualnych Klientach", "📊", st.session_state['news_data']['clients'], "#fafafa")
-            full_html += create_section_html_raw("Przetargi/prospekty", "📢", st.session_state['news_data']['tenders'], "#ffffff")
+            full_html += create_section_html_raw("Breaking News", "📢", final_breaking, "#fafafa")
+            full_html += create_section_html_raw("Informacje ogólne", "📌", final_general, "#fafafa")
+            full_html += create_section_html_raw("Produkty, usługi", "🛠", final_products, "#ffffff")
+            full_html += create_section_html_raw("Projekty na aktualnych Klientach", "📊", final_clients, "#fafafa")
+            full_html += create_section_html_raw("Przetargi/prospekty", "📢", final_tenders, "#ffffff")
             full_html += HTML_FOOTER
 
-            # Zakładki podglądu
             subtab_preview, subtab_code = st.tabs(["👁️ Render", "💻 Kod źródłowy"])
-
             with subtab_preview:
                 st.components.v1.html(full_html, height=800, scrolling=True)
-
             with subtab_code:
                 st.code(full_html, language='html')
 
-            # Przycisk pobierania
             file_name_clean = f"newsletter_{date_str.replace(' ', '_')}.html"
-            st.download_button(
-                label="📥 POBIERZ GOTOWY PLIK HTML",
-                data=full_html,
-                file_name=file_name_clean,
-                mime="text/html"
-            )
+            st.download_button("📥 POBIERZ GOTOWY PLIK HTML", full_html, file_name_clean, "text/html")
 
 if __name__ == "__main__":
     main()
