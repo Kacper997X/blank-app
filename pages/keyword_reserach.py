@@ -64,9 +64,9 @@ def generate_seeds(main_keyword, context, api_key):
 # --- FUNKCJA 2: POBIERANIE Z SENUTO ---
 def fetch_from_senuto(seeds, api_key):
     results = []
-    # Endpoint do bazy słów kluczowych (Sprawdź w dokumentacji czy endpoint jest aktualny dla Twojego planu)
-    # Zazwyczaj jest to POST na /api/keywords/explorer/related
-    url = "https://api.senuto.com/api/keywords/explorer/related"
+    
+    # AKTUALIZACJA 1: Poprawny URL endpointu
+    url = "https://api.senuto.com/api/keyword-explorer/related-keywords"
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -76,11 +76,11 @@ def fetch_from_senuto(seeds, api_key):
     progress_bar = st.progress(0)
     
     for i, seed in enumerate(seeds):
-        # Parametry zapytania Senuto
+        # AKTUALIZACJA 2: Poprawna struktura zapytania i ID kraju (Polska = 42)
         payload = {
-            "query": seed,
-            "country_id": 1, # 1 = Polska
-            "limit": 50      # Limit per seed (oszczędzanie punktów)
+            "keyword": seed,    # Czasami 'query', czasami 'keyword' - zależy od wersji, próbujemy 'keyword'
+            "country_id": 42,   # 42 to ID Polski w Senuto
+            "limit": 50
         }
         
         try:
@@ -88,22 +88,31 @@ def fetch_from_senuto(seeds, api_key):
             
             if response.status_code == 200:
                 data = response.json()
-                # Parsowanie odpowiedzi (zależy od struktury JSON Senuto)
-                if data.get('success'):
-                    keywords = data.get('data', [])
-                    for k in keywords:
+                
+                # AKTUALIZACJA 3: Bezpieczniejsze parsowanie (Senuto może zwracać dane różnie)
+                if data.get('success', True): # Czasami success jest domyślne
+                    # Szukamy listy słów w 'data' lub bezpośrednio
+                    keywords_list = data.get('data', [])
+                    
+                    if not keywords_list and isinstance(data, list):
+                        keywords_list = data
+                        
+                    for k in keywords_list:
+                        # Wyciągamy dane, z zabezpieczeniem przed brakującymi kluczami
                         results.append({
-                            "Keyword": k.get('keyword'),
-                            "Search Volume": k.get('avg_monthly_searches'),
-                            "CPC": k.get('cpc'),
+                            "Keyword": k.get('keyword', k.get('name')),
+                            "Search Volume": k.get('avg_monthly_searches', 0),
+                            "CPC": k.get('cpc', 0),
                             "Source Seed": seed
                         })
             else:
-                st.warning(f"Senuto zwróciło błąd dla '{seed}': {response.status_code}")
-                # st.write(response.text) # Odkomentuj do debugowania
+                # WAŻNE: Wyświetlamy treść błędu z Senuto, żeby wiedzieć co jest nie tak
+                st.error(f"Błąd Senuto dla '{seed}': Kod {response.status_code}")
+                with st.expander(f"Szczegóły błędu dla {seed}"):
+                    st.write(response.text) # Pokaże nam komunikat od twórców API
                 
         except Exception as e:
-            st.error(f"Błąd połączenia z Senuto: {e}")
+            st.error(f"Krytyczny błąd połączenia: {e}")
         
         progress_bar.progress((i + 1) / len(seeds))
         
