@@ -7,7 +7,6 @@ import time
 from openai import OpenAI
 import re
 from docx import Document
-from docx.opc.constants import RELATIONSHIP_TYPE as RT
 
 # ==========================================
 # KONFIGURACJA I STAŁE
@@ -243,98 +242,6 @@ def cosine_similarity(a, b):
     if np.all(a == 0) or np.all(b == 0):
         return 0.0
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-# ==========================================
-# FUNKCJE LOGICZNE - TAB 3 (GENERATOR NEWSLETTERA)
-# ==========================================
-
-
-
-
-
-    # Funkcja generująca pojedynczą sekcję
-    def make_section(title, icon, content_list, bg_color="#fafafa"):
-        if not content_list:
-            return ""
-        
-        items_html = ""
-        for item in content_list:
-            # Czyścimy i formatujemy tekst (boldy, linki)
-            formatted_item = clean_text_with_links(item)
-            items_html += f'<li style="margin-bottom: 10px;">{formatted_item}</li>\n'
-            
-        return f"""
-                    <tr>
-                        <td style="padding: 20px; background-color: {bg_color}; color: #000000;">
-                            <b style="color: #33D76F;">{icon} {title}:</b><br><br>
-                            <ul style="padding-left: 20px;">
-                                {items_html}
-                            </ul>
-                        </td>
-                    </tr>"""
-
-    # --- 2. SKŁADANIE CAŁOŚCI ---
-    body = ""
-    # Breaking News (Tło #fafafa)
-    body += make_section("Breaking News", "📢", data.get("breaking", []), bg_color="#fafafa")
-    # Info ogólne (Tło #fafafa - wg wzoru, choć można zmienić na #ffffff dla kontrastu)
-    body += make_section("Informacje ogólne", "📌", data.get("general", []), bg_color="#fafafa")
-    # Produkty (Tło #ffffff - tu zmieniam dla kontrastu lub zgodnie z życzeniem)
-    body += make_section("Produkty, usługi", "🛠", data.get("products", []), bg_color="#ffffff")
-    # Klienci (Tło #fafafa)
-    body += make_section("Projekty na aktualnych Klientach", "📊", data.get("clients", []), bg_color="#fafafa")
-    # Przetargi (Tło #ffffff)
-    body += make_section("Przetargi/prospekty", "📢", data.get("tenders", []), bg_color="#ffffff")
-
-    return HEADER + body + FOOTER
-
-def parse_docx(file):
-    """
-    Prosty parser, który czyta plik linia po linii i szuka nagłówków.
-    """
-    doc = Document(file)
-    parsed_data = {
-        "breaking": [],
-        "general": [],
-        "products": [],
-        "clients": [],
-        "tenders": []
-    }
-    
-    current_section = None
-    
-    for para in doc.paragraphs:
-        text = para.text.strip()
-        if not text:
-            continue
-            
-        text_lower = text.lower()
-        
-        # Wykrywanie sekcji (słowa kluczowe)
-        if "breaking news" in text_lower:
-            current_section = "breaking"
-            continue
-        elif "informacje ogólne" in text_lower:
-            current_section = "general"
-            continue
-        elif "produkty" in text_lower and "usługi" in text_lower:
-            current_section = "products"
-            continue
-        elif "projekty" in text_lower or "aktualnych klientach" in text_lower:
-            current_section = "clients"
-            continue
-        elif "przetargi" in text_lower or "prospekty" in text_lower:
-            current_section = "tenders"
-            continue
-            
-        # Dodawanie treści
-        if current_section:
-            # Tutaj można by dodać logikę wyciągania linków z XML docx, 
-            # ale najbezpieczniej pozwolić użytkownikowi edytować tekst w UI
-            parsed_data[current_section].append(text)
-            
-    return parsed_data
-
 
 
 # ==========================================
