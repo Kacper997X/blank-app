@@ -7,3 +7,4 @@ pyyaml
 bcrypt
 numpy
 python-docx
+st_quill
