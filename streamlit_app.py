@@ -18,8 +18,8 @@ st.set_page_config(page_title="SEO Macerator & Semantic Tool", layout="wide")
 USER_DATA_PATH = 'users.json'
 AVAILABLE_MODELS = ["gpt-4o-mini", "gpt-5-mini", "gpt-5-nano"]
 
-# --- SZABLON HTML NEWSLETTERA ---
-HTML_HEADER = """<!DOCTYPE html>
+# --- DOMYŚLNY SZABLON HTML (Można go edytować w aplikacji) ---
+DEFAULT_HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -37,15 +37,64 @@ HTML_HEADER = """<!DOCTYPE html>
                             <img src="https://www.performics.com/pl/wp-content/uploads/2015/10/performics-logo248x43.png" alt="Logo Firmy" width="150" style="display: block; margin: 0 auto;">
                         </td>
                     </tr>
+
                     <!-- Nagłówek -->
                     <tr>
                         <td style="background-color: #000000; color: white; text-align: center; padding: 20px; font-size: 22px; font-weight: bold;">
-                            📢 Podsumowanie tygodnia – {date_str}
+                            📢 Podsumowanie tygodnia – [DATA]
                         </td>
                     </tr>
-"""
 
-HTML_FOOTER = """
+                    <!-- Breaking News -->
+                    <tr>
+                        <td style="padding: 20px; background-color: #fafafa; color: #000000;">
+                            <b style="color: #33D76F;">📢 Breaking News:</b><br><br>
+                            <ul style="padding-left: 20px;">
+                                <!-- TU WSTAW NEWSY BREAKING -->
+                            </ul>
+                        </td>
+                    </tr>
+
+                    <!-- Informacje ogólne -->
+                    <tr>
+                        <td style="padding: 20px; background-color: #fafafa; color: #000000;">
+                            <b style="color: #33D76F;">📌 Informacje ogólne:</b><br><br>
+                            <ul style="padding-left: 20px;">
+                                <!-- TU WSTAW INFO OGÓLNE -->
+                            </ul>
+                        </td>
+                    </tr>
+
+                    <!-- Produkty, usługi -->
+                    <tr>
+                        <td style="padding: 20px; color: #000000;">
+                            <b style="color: #33D76F;">🛠 Produkty, usługi:</b><br><br>
+                            <ul style="padding-left: 20px;">
+                                <!-- TU WSTAW PRODUKTY -->
+                            </ul>
+                        </td>
+                    </tr>
+
+                    <!-- Projekty na aktualnych Klientach -->
+                    <tr>
+                        <td style="padding: 20px; background-color: #fafafa; color: #000000;">
+                            <b style="color: #33D76F;">📊 Projekty na aktualnych Klientach:</b><br><br>
+                            <ul style="padding-left: 20px;">
+                                <!-- TU WSTAW PROJEKTY -->
+                            </ul>
+                        </td>
+                    </tr>
+
+                    <!-- Przetargi/prospekty -->
+                    <tr>
+                        <td style="padding: 20px; color: #000000;">
+                            <b style="color: #33D76F;">📢 Przetargi/prospekty:</b><br><br>
+                            <ul style="padding-left: 20px;">
+                                <!-- TU WSTAW PRZETARGI -->
+                            </ul>
+                        </td>
+                    </tr>
+
                     <!-- Stopka -->
                     <tr>
                         <td style="background-color: #000000; color: white; text-align: center; padding: 15px; font-size: 14px;">
@@ -57,8 +106,7 @@ HTML_FOOTER = """
         </tr>
     </table>
 </body>
-</html>
-"""
+</html>"""
 
 # ==========================================
 # FUNKCJE UWIERZYTELNIANIA
@@ -367,77 +415,65 @@ def get_docx_text_with_links(doc):
         full_text_list.append(p_text)
     return full_text_list
 
-def parse_docx_advanced(file):
-    """
-    Ulepszony parser: lepiej wykrywa sekcje i usuwa nagłówki z treści.
-    """
-    doc = Document(file)
-    raw_lines = get_docx_text_with_links(doc)
-    
-    parsed_data = {
-        "breaking": [],
-        "general": [],
-        "products": [],
-        "clients": [],
-        "tenders": []
-    }
-    
-    current_section = None
-    
-    for line in raw_lines:
-        text = line.strip()
-        if not text:
-            continue
-            
-        text_lower = text.lower()
-        
-        # Wykrywanie sekcji - słowa kluczowe
-        # Używamy 'continue', żeby NIE dodawać linii nagłówka do treści sekcji
-        if "breaking news" in text_lower:
-            current_section = "breaking"
-            continue
-        elif "informacje ogólne" in text_lower:
-            current_section = "general"
-            continue
-        elif "produkty" in text_lower and "usługi" in text_lower:
-            current_section = "products"
-            continue
-        elif "projekty" in text_lower or "aktualnych klientach" in text_lower:
-            current_section = "clients"
-            continue
-        elif "przetargi" in text_lower or "prospekty" in text_lower:
-            current_section = "tenders"
-            continue
-        elif "stopka" in text_lower: # Zabezpieczenie przed wczytaniem stopki
-            current_section = None
-            continue
-            
-        # Dodawanie treści tylko jeśli jesteśmy w sekcji
-        if current_section:
-            parsed_data[current_section].append(text)
-            
-    return parsed_data
 
-def ai_format_text(text_list, client, model="gpt-4o-mini"):
-    """
-    Formatowanie tekstu przez AI z zachowaniem struktury HTML.
-    """
-    if not text_list:
-        return ""
-        
-    input_text = "\n".join(text_list)
-    
-    # Zmieniony prompt, który zabrania dzielenia akapitów
-    system_prompt = """Jesteś redaktorem newslettera firmowego.
-Twoim zadaniem jest sformatowanie tekstu na listę HTML <ul>...</ul>.
+# ==========================================
+# FUNKCJE DLA ZAKŁADKI 3 (INTELIGENTNY MERGE)
+# ==========================================
 
-ZASADY KRYTYCZNE:
-1. JEDEN AKAPIT WEJŚCIOWY = JEDEN PUNKT LISTY <li>. Absolutnie NIE dziel jednego akapitu/zdania na wiele punktów.
-2. Zwróć wynik jako kompletny blok HTML: <ul><li>Treść 1</li><li>Treść 2</li></ul>.
-3. Styl dla każdego <li> musi być taki: <li style="margin-bottom: 10px;">
-4. Linki Markdown [tekst](url) zamień na: <a href="url" style="color: #33D76F; font-weight: bold; text-decoration: none;">tekst</a>.
-5. POGRUBIAJ (<b>...</b>): Imiona i nazwiska, Marki (np. Media Markt, Google), Narzędzia, Kluczowe Daty.
-6. Nie dodawaj żadnego tekstu/komentarza poza kodem HTML.
+def get_full_text_from_docx(docx_file):
+    """Wyciąga cały tekst z pliku Word jako jeden długi string, zachowując linki."""
+    doc = Document(docx_file)
+    full_text = []
+    rels = doc.part.rels
+    
+    for para in doc.paragraphs:
+        if not para.text.strip(): continue
+        p_text = ""
+        # Próba wyciągnięcia tekstu z linkami
+        for child in para._element:
+            if child.tag.endswith('r') and child.text:
+                p_text += child.text
+            elif child.tag.endswith('hyperlink'):
+                try:
+                    rId = child.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                    if rId in rels:
+                        url = rels[rId].target_ref
+                        link_text = "".join([node.text for node in child.iter() if node.tag.endswith('t')])
+                        if link_text and url: p_text += f" [{link_text}]({url}) "
+                        else: p_text += link_text
+                except: pass
+        if not p_text: p_text = para.text
+        full_text.append(p_text)
+        
+    return "\n".join(full_text)
+
+def generate_smart_html(html_template, content_text, date_str, client, model="gpt-4o"):
+    """
+    Wysyła szablon HTML i treść Worda do AI z poleceniem ich połączenia.
+    """
+    system_prompt = """Jesteś ekspertem HTML i redaktorem newslettera.
+Twoim zadaniem jest wypełnienie dostarczonego szablonu HTML treścią z pliku tekstowego.
+
+ZASADY:
+1. Przeanalizuj 'Treść Newslettera' i zidentyfikuj sekcje (Breaking News, Informacje Ogólne, Projekty, Przetargi).
+2. Wstaw odpowiednie fragmenty tekstu w odpowiednie miejsca w 'Szablonie HTML' (np. w miejsce komentarzy <!-- TU WSTAW... -->).
+3. Podmień [DATA] w nagłówku na podaną datę.
+4. FORMATOWANIE TREŚCI (BARDZO WAŻNE):
+   - Każdy news wstaw jako element `<li>...</li>`.
+   - Zachowaj istniejącą strukturę `<ul>` z szablonu.
+   - POGRUB (używając tagu `<b>`) wszystkie: Imiona i nazwiska, Marki (np. Media Markt), Firmy, Narzędzia, Kluczowe daty.
+   - Linki w formacie `[tekst](url)` zamień na `<a href="url" style="color: #33D76F; font-weight: bold; text-decoration: none;">tekst</a>`.
+5. Zwróć TYLKO kompletny kod HTML. Nie usuwaj stylów CSS.
+"""
+
+    user_message = f"""
+--- DATA WYDANIA: {date_str} ---
+
+--- SZABLON HTML: ---
+{html_template}
+
+--- TREŚĆ Z WORDA: ---
+{content_text}
 """
 
     try:
@@ -445,25 +481,19 @@ ZASADY KRYTYCZNE:
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Sformatuj ten tekst:\n{input_text}"}
+                {"role": "user", "content": user_message}
             ],
             temperature=0.1
         )
         content = response.choices[0].message.content.strip()
-        # Usuwamy znaczniki markdown kodu, jeśli AI je dodało
+        # Usunięcie znaczników markdown
         content = content.replace("```html", "").replace("```", "").strip()
         return content
-        
     except Exception as e:
-        # Fallback w przypadku błędu
-        return "<ul>" + "".join([f'<li style="margin-bottom: 10px;">{t}</li>' for t in text_list]) + "</ul>"
+        return f"<h3>Wystąpił błąd AI:</h3><p>{e}</p>"
 
-def create_section_html_raw(title, icon, html_content, bg_color="#ffffff"):
-    if not html_content: return ""
-    return f"""
-        <tr><td style="padding: 20px; background-color: {bg_color}; color: #000000;">
-        <b style="color: #33D76F;">{icon} {title}:</b><br><br>
-        <ul style="padding-left: 20px;">{html_content}</ul></td></tr>"""
+
+
 
 # ==========================================
 # GŁÓWNA APLIKACJA
@@ -878,110 +908,84 @@ Przykład odpowiedzi:
                     st.info("Spróbuj sprawdzić czy plik jest poprawnym CSV rozdzielonym średnikami.")
 
 # ==========================================
-    # ZAKŁADKA 3: GENERATOR Z AI + WYSIWYG
+    # ZAKŁADKA 3: INTELIGENTNY NEWSLETTER (SMART MERGE)
     # ==========================================
     with tab3:
-        st.header("Generator Newslettera HTML z AI (Edytor Wizualny)")
-        st.markdown("""
-        **Instrukcja:**
-        1. Wgraj plik Word -> Kliknij **Wczytaj tekst**.
-        2. Kliknij **Auto-Formatowanie AI**, aby GPT przygotowało wersję roboczą.
-        3. **Edytuj tekst w polach poniżej** (możesz pogrubiać, dodawać linki, poprawiać listy).
-        4. Pobierz gotowy HTML.
-        """)
+        st.header("Generator Newslettera (Metoda: Wzór + Treść)")
+        st.markdown("To narzędzie działa jak ChatGPT: Dajesz mu wzór HTML, dajesz treść z Worda, a AI łączy to w całość, zachowując style.")
 
-        # Inicjalizacja stanu
-        if 'news_data' not in st.session_state:
-            st.session_state['news_data'] = {"breaking": "", "general": "", "products": "", "clients": "", "tenders": ""}
+        col_left, col_right = st.columns([1, 1])
 
-        col_input, col_preview = st.columns([1, 1])
+        with col_left:
+            st.subheader("1. Konfiguracja")
+            
+            # Edycja Wzoru HTML
+            with st.expander("A. Edytuj Wzór HTML (Szablon)", expanded=False):
+                html_template_input = st.text_area(
+                    "Kod HTML z miejscami na treść:", 
+                    value=DEFAULT_HTML_TEMPLATE, 
+                    height=300,
+                    key="html_template_area"
+                )
 
-        with col_input:
-            st.subheader("1. Treść i Edycja")
-            uploaded_doc = st.file_uploader("Wgraj plik .docx", type="docx", key="news_doc")
-            date_str = st.text_input("Data newslettera (np. 29 Listopada)", "29 Listopada")
+            # Wgrywanie treści
+            st.markdown("**B. Treść (Word)**")
+            uploaded_doc = st.file_uploader("Wgraj plik .docx z treścią", type="docx", key="smart_doc_uploader")
+            
+            # Opcja ręczna
+            manual_content = st.text_area("LUB wklej treść ręcznie tutaj:", height=150, placeholder="Wklej treść maila/dokumentu tutaj...")
+            
+            date_str = st.text_input("Data wydania (np. 29 Listopada)", "29 Listopada")
 
-            # --- KROK 1: Wczytanie z Worda ---
-            if uploaded_doc and st.button("📂 1. Wczytaj tekst z pliku"):
-                try:
-                    parsed = parse_docx_advanced(uploaded_doc)
-                    for key in parsed:
-                        st.session_state['news_data'][key] = "\n".join(parsed[key])
-                    st.success("Tekst wczytany!")
-                except Exception as e:
-                    st.error(f"Błąd odczytu pliku: {e}")
+            generate_btn = st.button("✨ GENERUJ NEWSLETTER (AI)", type="primary")
 
-            st.markdown("---")
-
-            # --- KROK 2: AI Formatowanie ---
-            if st.button("✨ 2. Auto-Formatowanie AI"):
-                if not any(st.session_state['news_data'].values()):
-                    st.warning("Najpierw wczytaj plik!")
+        with col_right:
+            st.subheader("2. Wynik")
+            
+            if generate_btn:
+                # 1. Pobranie treści
+                content_to_process = ""
+                if uploaded_doc:
+                    try:
+                        content_to_process = get_full_text_from_docx(uploaded_doc)
+                        st.success("Pobrano treść z pliku Word.")
+                    except Exception as e:
+                        st.error(f"Błąd odczytu pliku: {e}")
+                elif manual_content.strip():
+                    content_to_process = manual_content
+                
+                if not content_to_process:
+                    st.warning("Musisz wgrać plik Word lub wkleić treść!")
                 else:
+                    # 2. Generowanie przez AI
                     try:
                         api_key = st.secrets["OPENAI_API_KEY"]
                         client = OpenAI(api_key=api_key)
-                        with st.status("AI formatuje tekst...", expanded=True):
-                            sections_map = {'breaking': "Breaking News", 'general': "Info Ogólne", 'products': "Produkty", 'clients': "Klienci", 'tenders': "Przetargi"}
-                            for key, name in sections_map.items():
-                                content = st.session_state['news_data'][key]
-                                if content.strip(): 
-                                    st.write(f"Przetwarzanie: {name}...")
-                                    st.session_state['news_data'][key] = ai_format_text(content.split('\n'), client)
-                        st.success("Gotowe! Możesz teraz edytować wynik poniżej.")
+                        
+                        with st.spinner("AI łączy treść z szablonem i formatuje... To potrwa kilka sekund."):
+                            # Używamy gpt-4o dla najlepszej jakości rozumienia kontekstu
+                            final_html = generate_smart_html(html_template_input, content_to_process, date_str, client, model="gpt-4o")
+                            
+                        # 3. Wyświetlenie wyniku
+                        st.session_state['generated_html'] = final_html
+                        
                     except Exception as e:
                         st.error(f"Błąd API: {e}")
 
-            st.markdown("### 📝 Edycja Wizualna (WYSIWYG)")
-            st.info("Tutaj możesz poprawić tekst, pogrubienia i linki jak w Wordzie.")
-            
-            # --- EDYTORY QUILL ---
-            # Każdy edytor musi mieć unikalny klucz.
-            
-            st.caption("📢 Breaking News")
-            breaking_html = st_quill(value=st.session_state['news_data']['breaking'], html=True, key="quill_breaking")
-            
-            st.caption("📌 Informacje Ogólne")
-            general_html = st_quill(value=st.session_state['news_data']['general'], html=True, key="quill_general")
-            
-            st.caption("🛠 Produkty, usługi")
-            products_html = st_quill(value=st.session_state['news_data']['products'], html=True, key="quill_products")
-            
-            st.caption("📊 Projekty na klientach")
-            clients_html = st_quill(value=st.session_state['news_data']['clients'], html=True, key="quill_clients")
-            
-            st.caption("📢 Przetargi")
-            tenders_html = st_quill(value=st.session_state['news_data']['tenders'], html=True, key="quill_tenders")
-
-        with col_preview:
-            st.subheader("2. Podgląd HTML")
-
-            # Składamy HTML z wartości zwróconych przez edytory Quill (zmienne *_html),
-            # a jeśli edytor jeszcze nic nie zwrócił (np. przy pierwszym ładowaniu), bierzemy ze stanu.
-            
-            final_breaking = breaking_html if breaking_html else st.session_state['news_data']['breaking']
-            final_general = general_html if general_html else st.session_state['news_data']['general']
-            final_products = products_html if products_html else st.session_state['news_data']['products']
-            final_clients = clients_html if clients_html else st.session_state['news_data']['clients']
-            final_tenders = tenders_html if tenders_html else st.session_state['news_data']['tenders']
-
-            # Używamy create_section_html_raw, która po prostu wkleja gotowy HTML z edytora
-            full_html = HTML_HEADER.format(date_str=date_str)
-            full_html += create_section_html_raw("Breaking News", "📢", final_breaking, "#fafafa")
-            full_html += create_section_html_raw("Informacje ogólne", "📌", final_general, "#fafafa")
-            full_html += create_section_html_raw("Produkty, usługi", "🛠", final_products, "#ffffff")
-            full_html += create_section_html_raw("Projekty na aktualnych Klientach", "📊", final_clients, "#fafafa")
-            full_html += create_section_html_raw("Przetargi/prospekty", "📢", final_tenders, "#ffffff")
-            full_html += HTML_FOOTER
-
-            subtab_preview, subtab_code = st.tabs(["👁️ Render", "💻 Kod źródłowy"])
-            with subtab_preview:
-                st.components.v1.html(full_html, height=800, scrolling=True)
-            with subtab_code:
-                st.code(full_html, language='html')
-
-            file_name_clean = f"newsletter_{date_str.replace(' ', '_')}.html"
-            st.download_button("📥 POBIERZ GOTOWY PLIK HTML", full_html, file_name_clean, "text/html")
+            # Wyświetlanie wyniku z sesji (żeby nie znikał)
+            if 'generated_html' in st.session_state:
+                final_html = st.session_state['generated_html']
+                
+                tab_preview, tab_code = st.tabs(["👁️ Podgląd", "💻 Kod HTML"])
+                
+                with tab_preview:
+                    st.components.v1.html(final_html, height=800, scrolling=True)
+                
+                with tab_code:
+                    st.code(final_html, language='html')
+                
+                file_name = f"newsletter_{date_str.replace(' ', '_')}.html"
+                st.download_button("📥 POBIERZ GOTOWY HTML", final_html, file_name, "text/html")
 
 if __name__ == "__main__":
     main()
