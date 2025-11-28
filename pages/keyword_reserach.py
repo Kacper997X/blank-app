@@ -4,6 +4,19 @@ import openai
 import requests
 import json
 
+# --- ZABEZPIECZENIE STRONY (Musi być na samej górze) ---
+if 'logged_in' not in st.session_state or not st.session_state['logged_in']:
+    st.warning("⚠️ Musisz się najpierw zalogować na stronie głównej!")
+    st.stop() # Zatrzymuje ładowanie reszty kodu
+    
+# --- Pasek boczny z informacją o użytkowniku ---
+with st.sidebar:
+    if 'username' in st.session_state and st.session_state['username']:
+        st.write(f"Zalogowany jako: **{st.session_state['username']}**")
+    
+    # Przycisk powrotu do menu głównego (opcjonalnie)
+    st.page_link("streamlit_app.py", label="🏠 Wróć do strony głównej")
+
 # --- KONFIGURACJA PODSTRONY ---
 st.set_page_config(page_title="Keyword Research (Senuto)", layout="wide")
 
