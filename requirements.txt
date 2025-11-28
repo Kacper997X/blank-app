@@ -7,4 +7,3 @@ pyyaml
 bcrypt
 numpy
 python-docx
-streamlit-quill
