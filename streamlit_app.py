@@ -7,6 +7,7 @@ import time
 from openai import OpenAI
 import re
 from docx import Document
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 
 # ==========================================
 # KONFIGURACJA I STAŁE
@@ -15,6 +16,48 @@ st.set_page_config(page_title="SEO Macerator & Semantic Tool", layout="wide")
 
 USER_DATA_PATH = 'users.json'
 AVAILABLE_MODELS = ["gpt-4o-mini", "gpt-5-mini", "gpt-5-nano"]
+
+# --- SZABLON HTML NEWSLETTERA ---
+HTML_HEADER = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podsumowanie tygodnia</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f3f3;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" align="center">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff; border: 1px solid #ddd;">
+                    <!-- Logo firmy -->
+                    <tr>
+                        <td style="background-color: #000000; padding: 20px; text-align: center;">
+                            <img src="https://www.performics.com/pl/wp-content/uploads/2015/10/performics-logo248x43.png" alt="Logo Firmy" width="150" style="display: block; margin: 0 auto;">
+                        </td>
+                    </tr>
+                    <!-- Nagłówek -->
+                    <tr>
+                        <td style="background-color: #000000; color: white; text-align: center; padding: 20px; font-size: 22px; font-weight: bold;">
+                            📢 Podsumowanie tygodnia – {date_str}
+                        </td>
+                    </tr>
+"""
+
+HTML_FOOTER = """
+                    <!-- Stopka -->
+                    <tr>
+                        <td style="background-color: #000000; color: white; text-align: center; padding: 15px; font-size: 14px;">
+                            &copy; Performics | Wszystkie prawa zastrzeżone
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+"""
 
 # ==========================================
 # FUNKCJE UWIERZYTELNIANIA
@@ -297,6 +340,72 @@ def parse_docx(file):
             parsed_data[current_section].append(text)
             
     return parsed_data
+
+# ==========================================
+# FUNKCJE NEWSLETTERA (WORD + AI)
+# ==========================================
+def get_docx_text_with_links(doc):
+    """Wyciąga tekst z Worda zachowując linki w formacie Markdown [text](url)."""
+    full_text_list = []
+    rels = doc.part.rels
+    for paragraph in doc.paragraphs:
+        if not paragraph.text.strip(): continue
+        p_text = ""
+        for child in paragraph._element:
+            if child.tag.endswith('r') and child.text:
+                p_text += child.text
+            elif child.tag.endswith('hyperlink'):
+                try:
+                    rId = child.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                    if rId in rels:
+                        url = rels[rId].target_ref
+                        link_text = "".join([node.text for node in child.iter() if node.tag.endswith('t')])
+                        if link_text and url: p_text += f" [{link_text}]({url}) "
+                        else: p_text += link_text
+                except: pass
+        full_text_list.append(p_text)
+    return full_text_list
+
+def parse_docx_advanced(file):
+    doc = Document(file)
+    raw_lines = get_docx_text_with_links(doc)
+    parsed_data = {"breaking": [], "general": [], "products": [], "clients": [], "tenders": []}
+    current_section = None
+    for line in raw_lines:
+        text = line.strip()
+        text_lower = text.lower()
+        if "breaking news" in text_lower: current_section = "breaking"; continue
+        elif "informacje ogólne" in text_lower: current_section = "general"; continue
+        elif "produkty" in text_lower and "usługi" in text_lower: current_section = "products"; continue
+        elif "projekty" in text_lower or "aktualnych klientach" in text_lower: current_section = "clients"; continue
+        elif "przetargi" in text_lower: current_section = "tenders"; continue
+        if current_section and text: parsed_data[current_section].append(text)
+    return parsed_data
+
+def ai_format_text(text_list, client, model="gpt-4o-mini"):
+    """Prosi AI o sformatowanie HTML i pogrubienie kluczowych fraz."""
+    if not text_list: return ""
+    input_text = "\n".join(text_list)
+    system_prompt = """Jesteś redaktorem newslettera. Sformatuj tekst na listę HTML (same tagi <li>).
+    1. Zwróć TYLKO elementy <li>...</li> (bez <ul>).
+    2. POGRUB (używając <b>...</b>): Imiona i nazwiska, Marki (np. Google, Media Markt), Nazwy własne narzędzi/firm, Ważne daty.
+    3. Linki Markdown [tekst](url) zamień na: <a href="url" style="color: #33D76F; font-weight: bold;">tekst</a>.
+    4. Styl punktu: <li style="margin-bottom: 10px;">.
+    """
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": input_text}]
+        )
+        return response.choices[0].message.content.strip().replace("```html", "").replace("```", "").replace("<ul>", "").replace("</ul>", "")
+    except Exception as e: return f"<!-- Błąd AI: {e} -->\n" + "\n".join([f"<li>{t}</li>" for t in text_list])
+
+def create_section_html_raw(title, icon, html_content, bg_color="#ffffff"):
+    if not html_content: return ""
+    return f"""
+        <tr><td style="padding: 20px; background-color: {bg_color}; color: #000000;">
+        <b style="color: #33D76F;">{icon} {title}:</b><br><br>
+        <ul style="padding-left: 20px;">{html_content}</ul></td></tr>"""
 
 # ==========================================
 # GŁÓWNA APLIKACJA
@@ -711,68 +820,70 @@ Przykład odpowiedzi:
                     st.info("Spróbuj sprawdzić czy plik jest poprawnym CSV rozdzielonym średnikami.")
 
     # ==========================================
-    # ZAKŁADKA 3: GENERATOR NEWSLETTERA (NOWA)
-    # ==========================================
-    with tab3:
-        st.header("Generator Newslettera HTML (Performics Style)")
-        st.markdown("Wgraj plik Word, zweryfikuj treść i pobierz gotowy HTML.")
-        
-        col_news_1, col_news_2 = st.columns([1, 1])
-
-        with col_news_1:
-            st.subheader("1. Dane wejściowe")
-            uploaded_doc = st.file_uploader("Wgraj plik Word (.docx)", type="docx", key="newsletter_uploader")
-            
-            # Stan początkowy danych
-            data = {k: [] for k in ["breaking", "general", "products", "clients", "tenders"]}
-            
-            if uploaded_doc:
+# FUNKCJE NEWSLETTERA (WORD + AI)
+# ==========================================
+def get_docx_text_with_links(doc):
+    """Wyciąga tekst z Worda zachowując linki w formacie Markdown [text](url)."""
+    full_text_list = []
+    rels = doc.part.rels
+    for paragraph in doc.paragraphs:
+        if not paragraph.text.strip(): continue
+        p_text = ""
+        for child in paragraph._element:
+            if child.tag.endswith('r') and child.text:
+                p_text += child.text
+            elif child.tag.endswith('hyperlink'):
                 try:
-                    data = parse_docx(uploaded_doc)
-                    st.success("✅ Plik wczytany! Możesz edytować treść poniżej.")
-                    st.info("💡 Wskazówka: Aby dodać link, użyj formatu HTML: `<a href='adres_url'>tekst</a>` lub standardu Markdown `[tekst](url)`.")
-                except Exception as e:
-                    st.error(f"Błąd odczytu pliku: {e}")
+                    rId = child.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                    if rId in rels:
+                        url = rels[rId].target_ref
+                        link_text = "".join([node.text for node in child.iter() if node.tag.endswith('t')])
+                        if link_text and url: p_text += f" [{link_text}]({url}) "
+                        else: p_text += link_text
+                except: pass
+        full_text_list.append(p_text)
+    return full_text_list
 
-            # Pola edycji
-            date_str = st.text_input("Data w nagłówku (np. 29 Listopada):", "")
-            
-            breaking_text = st.text_area("Breaking News", "\n".join(data["breaking"]), height=100)
-            general_text = st.text_area("Informacje ogólne", "\n".join(data["general"]), height=150)
-            products_text = st.text_area("Produkty, usługi", "\n".join(data["products"]), height=150)
-            clients_text = st.text_area("Projekty na klientach", "\n".join(data["clients"]), height=200)
-            tenders_text = st.text_area("Przetargi/prospekty", "\n".join(data["tenders"]), height=150)
+def parse_docx_advanced(file):
+    doc = Document(file)
+    raw_lines = get_docx_text_with_links(doc)
+    parsed_data = {"breaking": [], "general": [], "products": [], "clients": [], "tenders": []}
+    current_section = None
+    for line in raw_lines:
+        text = line.strip()
+        text_lower = text.lower()
+        if "breaking news" in text_lower: current_section = "breaking"; continue
+        elif "informacje ogólne" in text_lower: current_section = "general"; continue
+        elif "produkty" in text_lower and "usługi" in text_lower: current_section = "products"; continue
+        elif "projekty" in text_lower or "aktualnych klientach" in text_lower: current_section = "clients"; continue
+        elif "przetargi" in text_lower: current_section = "tenders"; continue
+        if current_section and text: parsed_data[current_section].append(text)
+    return parsed_data
 
-        with col_news_2:
-            st.subheader("2. Podgląd i Pobieranie")
-            
-            # Przekształcenie tekstu z powrotem w listy
-            final_data = {
-                "breaking": [x for x in breaking_text.split('\n') if x.strip()],
-                "general": [x for x in general_text.split('\n') if x.strip()],
-                "products": [x for x in products_text.split('\n') if x.strip()],
-                "clients": [x for x in clients_text.split('\n') if x.strip()],
-                "tenders": [x for x in tenders_text.split('\n') if x.strip()],
-            }
-            
-            # Generowanie HTML
-            full_html = generate_newsletter_html(date_str, final_data)
-            
-            # Zakładki podglądu
-            subtab1, subtab2 = st.tabs(["👁️ Render", "💻 Kod Źródłowy"])
-            
-            with subtab1:
-                st.components.v1.html(full_html, height=800, scrolling=True)
-            
-            with subtab2:
-                st.code(full_html, language='html')
-                
-            st.download_button(
-                label="📥 POBIERZ PLIK HTML",
-                data=full_html,
-                file_name="newsletter_performics.html",
-                mime="text/html"
-            )
+def ai_format_text(text_list, client, model="gpt-4o-mini"):
+    """Prosi AI o sformatowanie HTML i pogrubienie kluczowych fraz."""
+    if not text_list: return ""
+    input_text = "\n".join(text_list)
+    system_prompt = """Jesteś redaktorem newslettera. Sformatuj tekst na listę HTML (same tagi <li>).
+    1. Zwróć TYLKO elementy <li>...</li> (bez <ul>).
+    2. POGRUB (używając <b>...</b>): Imiona i nazwiska, Marki (np. Google, Media Markt), Nazwy własne narzędzi/firm, Ważne daty.
+    3. Linki Markdown [tekst](url) zamień na: <a href="url" style="color: #33D76F; font-weight: bold;">tekst</a>.
+    4. Styl punktu: <li style="margin-bottom: 10px;">.
+    """
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": input_text}]
+        )
+        return response.choices[0].message.content.strip().replace("```html", "").replace("```", "").replace("<ul>", "").replace("</ul>", "")
+    except Exception as e: return f"<!-- Błąd AI: {e} -->\n" + "\n".join([f"<li>{t}</li>" for t in text_list])
+
+def create_section_html_raw(title, icon, html_content, bg_color="#ffffff"):
+    if not html_content: return ""
+    return f"""
+        <tr><td style="padding: 20px; background-color: {bg_color}; color: #000000;">
+        <b style="color: #33D76F;">{icon} {title}:</b><br><br>
+        <ul style="padding-left: 20px;">{html_content}</ul></td></tr>"""
 
 if __name__ == "__main__":
     main()
