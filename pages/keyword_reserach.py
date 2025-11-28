@@ -2,115 +2,104 @@ import streamlit as st
 import requests
 import json
 
-st.set_page_config(page_title="Senuto Lab", layout="wide")
+st.set_page_config(page_title="Senuto Lab v2", layout="wide")
+st.title("🧪 Laboratorium API Senuto: Generator Tokena")
 
-st.title("🧪 Laboratorium API Senuto")
-st.markdown("""
-To narzędzie służy do znalezienia działającego połączenia.
-Będziesz potrzebować otwartej dokumentacji Senuto.
-""")
+# Zakładki: Najpierw zdobywamy token, potem testujemy
+tab1, tab2 = st.tabs(["🔑 1. Wygeneruj Prawdziwy Token", "🔬 2. Testuj Endpointy"])
 
-# --- 1. KONFIGURACJA KLUCZA ---
-with st.sidebar:
-    st.header("🔑 Ustawienia")
-    # Pobieramy klucz z secrets, jeśli jest
-    default_key = st.secrets.get("SENUTO_API_KEY", "")
-    api_key = st.text_input("Twój Bearer Token", value=default_key, type="password")
+# --- ZAKŁADKA 1: GENEROWANIE TOKENA ---
+with tab1:
+    st.header("Generowanie Bearer Token")
+    st.markdown("""
+    Tokeny integracyjne (np. do Data Studio) często nie działają w czystym API. 
+    Zgodnie z dokumentacją, musimy wymienić Twój login i hasło na **Bearer Token**.
+    """)
     
-    st.info("Token powinien być długim ciągiem znaków.")
-
-# --- 2. TEST POŁĄCZENIA (Autoryzacja) ---
-st.subheader("1. Test Autoryzacji")
-st.caption("Sprawdźmy, czy Twój klucz API jest poprawny, pytając o dane zalogowanego użytkownika (zgodnie z Twoją dokumentacją).")
-
-if st.button("🔍 Sprawdź klucz (/api/users/getLoggedUser)"):
-    if not api_key:
-        st.error("Wpisz klucz API w pasku bocznym!")
-    else:
-        url = "https://api.senuto.com/api/users/getLoggedUser"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                st.success("✅ SUKCES! Twój klucz jest poprawny.")
-                st.write("Twoje uprawnienia:")
-                data = response.json()
-                # Wyświetlamy sekcję ACCESS, żeby zobaczyć czy masz dostęp do Keyword Explorera
-                if 'data' in data and 'access' in data['data']:
-                    st.json(data['data']['access'])
-                else:
-                    st.json(data)
-            else:
-                st.error(f"❌ BŁĄD: {response.status_code}")
-                st.write("Serwer odpowiedział:")
-                st.text(response.text)
-        except Exception as e:
-            st.error(f"Błąd połączenia: {e}")
-
-st.divider()
-
-# --- 3. TEST KEYWORD EXPLORER ---
-st.subheader("2. Test Keyword Explorer (Ręczny)")
-st.markdown("Otwórz dokumentację w sekcji **Keyword Explorer**. Znajdź tam endpoint do pobierania słów (np. 'Related Keywords') i przepisz go tutaj.")
-
-col1, col2 = st.columns([3, 1])
-with col1:
-    # Tutaj wpisz adres, który znajdziesz w dokumentacji w sekcji Keyword Explorer
-    # Najczęstszy adres to: https://api.senuto.com/api/keywords/explorer/related
-    endpoint = st.text_input("Endpoint URL", "https://api.senuto.com/api/keywords/explorer/related")
-with col2:
-    method = st.selectbox("Metoda", ["POST", "GET"])
-
-# Domyślny JSON dla Keyword Explorer
-default_body = """{
-    "query": "rowery",
-    "country_id": 1,
-    "limit": 5
-}"""
-
-body = st.text_area("Body (JSON) - tylko dla POST", value=default_body, height=150)
-
-if st.button("🚀 Wyślij zapytanie testowe"):
-    if not api_key:
-        st.error("Brak klucza API!")
-    else:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
+    col_auth1, col_auth2 = st.columns(2)
+    with col_auth1:
+        email = st.text_input("Twój Email do Senuto")
+    with col_auth2:
+        password = st.text_input("Twoje Hasło do Senuto", type="password")
         
-        st.write(f"Wysyłam {method} na: `{endpoint}`")
-        
-        try:
-            if method == "GET":
-                response = requests.get(endpoint, headers=headers)
-            else:
-                # Parsowanie JSON z pola tekstowego
-                try:
-                    json_data = json.loads(body)
-                except:
-                    st.error("Błąd w formacie JSON! Sprawdź przecinki i cudzysłowy.")
-                    st.stop()
-                    
-                response = requests.post(endpoint, headers=headers, json=json_data)
+    if st.button("🔄 Pobierz Bearer Token"):
+        if not email or not password:
+            st.error("Podaj email i hasło!")
+        else:
+            url = "https://api.senuto.com/api/users/token"
+            # Zgodnie z dokumentacją Senuto (Form Data lub JSON)
+            payload = {
+                "email": email,
+                "password": password
+            }
             
-            # Wynik
-            st.write(f"Status: **{response.status_code}**")
-            
-            if response.status_code == 200:
-                st.success("Działa! Oto dane:")
-                st.json(response.json())
-            elif response.status_code == 404:
-                st.error("404 Not Found - Ten endpoint nie istnieje.")
-                st.info("Sprawdź w dokumentacji sekcję 'Keyword Explorer'. Adres może być inny.")
-            elif response.status_code == 401:
-                st.error("401 Unauthorized - Token nie ma dostępu do tego modułu.")
-            else:
-                st.error("Inny błąd.")
-                st.text(response.text)
+            try:
+                with st.spinner("Logowanie do Senuto..."):
+                    response = requests.post(url, json=payload)
                 
-        except Exception as e:
-            st.error(f"Krytyczny błąd: {e}")
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('success'):
+                        token = data['data']['token']
+                        st.success("✅ SUKCES! Oto Twój Bearer Token:")
+                        st.code(token, language="text")
+                        st.info("👇 Skopiuj ten token i wklej go w zakładce 'Testuj Endpointy' lub zapisz w secrets!")
+                        
+                        # Zapisz w sesji dla wygody
+                        st.session_state['generated_token'] = token
+                    else:
+                        st.error("Logowanie nieudane (Success: false)")
+                        st.json(data)
+                else:
+                    st.error(f"Błąd logowania: {response.status_code}")
+                    st.text(response.text)
+            except Exception as e:
+                st.error(f"Błąd połączenia: {e}")
+
+# --- ZAKŁADKA 2: TESTOWANIE ---
+with tab2:
+    st.header("Testowanie Endpointów")
+    
+    # Automatycznie wpisz wygenerowany token, jeśli istnieje
+    default_token = st.session_state.get('generated_token', st.secrets.get("SENUTO_API_KEY", ""))
+    api_token = st.text_input("Bearer Token (Wklej tu ten wygenerowany)", value=default_token, type="password")
+    
+    st.divider()
+    
+    st.markdown("### 🎯 Sprawdźmy Keyword Explorer")
+    
+    col_url, col_method = st.columns([3, 1])
+    with col_url:
+        # Najbardziej prawdopodobny endpoint wg dokumentacji
+        endpoint = st.text_input("Endpoint URL", "https://api.senuto.com/api/keywords/explorer/related")
+    with col_method:
+        method = st.selectbox("Metoda", ["POST", "GET"])
+        
+    body_str = st.text_area("Body JSON", value='{\n  "query": "crm",\n  "country_id": 1,\n  "limit": 5\n}', height=150)
+    
+    if st.button("🚀 Wyślij Zapytanie Testowe"):
+        if not api_token:
+            st.error("Brak tokena!")
+        else:
+            headers = {
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json"
+            }
+            
+            try:
+                if method == "GET":
+                    r = requests.get(endpoint, headers=headers)
+                else:
+                    json_data = json.loads(body_str)
+                    r = requests.post(endpoint, headers=headers, json=json_data)
+                
+                st.write(f"Status: **{r.status_code}**")
+                
+                if r.status_code == 200:
+                    st.success("Działa!")
+                    st.json(r.json())
+                else:
+                    st.error("Błąd API")
+                    st.json(r.json())
+            except Exception as e:
+                st.error(f"Błąd: {e}")
