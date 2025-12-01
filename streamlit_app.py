@@ -348,7 +348,7 @@ def main():
     st.title("🛠️ SEO Narzędzia")
     
     # --- Zakładki ---
-    tab1, tab2, tab3 = st.tabs(["📝 1. SEO Macerator", "🧠 2. Analiza Semantyczna", "📧 3. Generator Newslettera"])
+    tab1, tab2 = st.tabs(["📝 1. SEO Macerator", "🧠 2. Analiza Semantyczna", "📧 3. Generator Newslettera"])
 
     # ==========================================
     # ZAKŁADKA 1: GENERATOR (NIENARUSZONA)
@@ -738,7 +738,7 @@ Przykład odpowiedzi:
 # ==========================================
     # ZAKŁADKA 3: INTELIGENTNY NEWSLETTER (SMART MERGE)
     # ==========================================
-    with tab3:
+    if False:
         st.header("Generator Newslettera (Metoda: Wzór + Treść)")
         st.markdown("To narzędzie działa jak ChatGPT: Dajesz mu wzór HTML, dajesz treść z Worda, a AI łączy to w całość, zachowując style.")
 
