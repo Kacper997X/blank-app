@@ -2,7 +2,6 @@ import streamlit as st
 import json
 import bcrypt
 import pandas as pd
-import numpy as np
 import time
 from openai import OpenAI
 import re
@@ -211,40 +210,6 @@ def process_rows_in_batches(df, batch_size, system_prompt, user_prompt, model, c
     return results
 
 # ==========================================
-# FUNKCJE LOGICZNE - TAB 2 (EMBEDDINGI)
-# ==========================================
-def get_semantic_template_v2():
-    """Generuje wzór pliku dla narzędzia semantycznego"""
-    return pd.DataFrame({
-        'Keyword': ['buty do biegania', 'krem nawilżający'],
-        'Input1 (np. Title)': ['Najlepsze obuwie sportowe Nike', 'Krem do twarzy na dzień'],
-        'Input2 (np. Desc)': ['Sprawdź naszą ofertę butów do biegania w terenie.', 'Lekka formuła nawilżająca skórę.']
-    })
-
-def get_embedding(text, client):
-    """Pobiera wektor z OpenAI (text-embedding-3-large)."""
-    # Zabezpieczenie przed pustymi polami (NaN) lub brakiem tekstu
-    if not isinstance(text, str) or not text.strip():
-        return np.zeros(3072) # Zwraca wektor zerowy
-
-    text = text.replace("\n", " ")
-    try:
-        return client.embeddings.create(
-            input=[text],
-            model="text-embedding-3-large"
-        ).data[0].embedding
-    except Exception as e:
-        # W razie błędu zwracamy wektor zerowy, żeby nie wywalić całego procesu
-        return np.zeros(3072)
-
-def cosine_similarity(a, b):
-    """Oblicza podobieństwo (0 do 1)."""
-    if np.all(a == 0) or np.all(b == 0):
-        return 0.0
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-
-# ==========================================
 # FUNKCJE DLA ZAKŁADKI 3 (INTELIGENTNY MERGE)
 # ==========================================
 
@@ -348,7 +313,7 @@ def main():
     st.title("🛠️ SEO Narzędzia")
     
     # --- Zakładki ---
-    tab1, tab2 = st.tabs(["📝 1. SEO Macerator", "🧠 2. Analiza Semantyczna"])
+    tab1 = st.tabs(["📝 1. SEO Macerator"])
 
     # ==========================================
     # ZAKŁADKA 1: GENERATOR (NIENARUSZONA)
@@ -599,141 +564,6 @@ Przykład odpowiedzi:
                 except Exception as e:
                     st.error(f"Wystąpił błąd: {e}")
                     st.warning("Upewnij się, że masz ustawiony klucz OPENAI_API_KEY w secrets.")
-
-    # ==========================================
-    # ZAKŁADKA 2: ANALIZA SEMANTYCZNA (ZMODYFIKOWANA)
-    # ==========================================
-    with tab2:
-        st.header("Analiza Semantyczna (Embeddingi i Cosinusy)")
-        st.markdown("Porównaj wektorowo **Słowo Kluczowe** z dowolnymi innymi kolumnami (np. Tytułem, Opisem).")
-
-        with st.expander("ℹ️ Jak interpretować wyniki? (Ściąga)", expanded=False):
-            st.markdown("""
-            **Similarity Score** to liczba od **0 do 1**, określająca podobieństwo znaczeniowe (semantyczne), a nie tylko obecność słów.
-            
-            * 🟢 **0.80 - 1.00**: **Bardzo mocne dopasowanie.** Fraza i tekst znaczą niemal to samo. Idealne dla tytułów SEO.
-            * 🟡 **0.65 - 0.79**: **Dobre dopasowanie.** Temat jest zgodny, ale użyto nieco innego słownictwa. Wystarczające dla opisów (meta description).
-            * 🟠 **0.50 - 0.64**: **Średnie dopasowanie.** Kontekst jest podobny, ale relacja jest luźna. Warto doprecyzować treść.
-            * 🔴 **Poniżej 0.50**: **Słabe dopasowanie.** Algorytm uznaje, że teksty dotyczą różnych rzeczy. Ryzyko, że Google nie powiąże frazy z treścią.
-            
-            💡 **Wskazówka:** Nie dąż do wyniku 1.0 za wszelką cenę (to bywa nienaturalne). W SEO zazwyczaj celujemy w przedział **0.75 - 0.90**.
-            """)
-        
-        # Sekcja pobierania szablonu
-        st.subheader("1. Pobierz wzór")
-        st.download_button(
-            label="📥 Pobierz przykładowy CSV (Keyword + 2 kolumny)",
-            data=get_semantic_template_v2().to_csv(sep=';', index=False).encode('utf-8'),
-            file_name="wzor_semantyczny.csv",
-            mime="text/csv"
-        )
-        
-        st.subheader("2. Wgraj plik i wybierz kolumny")
-        uploaded_sem = st.file_uploader(
-            "📂 Wybierz plik CSV (separator średnik ';')", 
-            type=['csv'], 
-            key="sem_uploader"
-        )
-
-        if uploaded_sem is not None:
-            # Używamy klucza z secrets
-            try:
-                api_key = st.secrets["OPENAI_API_KEY"]
-                client = OpenAI(api_key=api_key)
-            except:
-                st.error("Brak klucza API w secrets!")
-                client = None
-
-            if client:
-                try:
-                    # Wczytanie z separatorem średnik (zgodnie z poprzednim standardem)
-                    # Używamy on_bad_lines='skip', żeby nie wywaliło się na błędach formatowania
-                    df_sem = pd.read_csv(uploaded_sem, sep=';', on_bad_lines='skip')
-                    
-                    st.success(f"✅ Wczytano plik. Liczba wierszy: {len(df_sem)}")
-                    
-                    # --- DYNAMICZNY WYBÓR KOLUMN ---
-                    all_columns = df_sem.columns.tolist()
-                    
-                    col1_sem, col2_sem = st.columns(2)
-                    
-                    with col1_sem:
-                        # Wybór kolumny "Głównej" (Słowo kluczowe)
-                        keyword_col = st.selectbox(
-                            "Wybierz kolumnę ze SŁOWEM KLUCZOWYM:", 
-                            options=all_columns,
-                            index=0
-                        )
-                    
-                    with col2_sem:
-                        # Wybór kolumn do porównania (filtrujemy, żeby nie wybrać tej samej co keyword)
-                        remaining_cols = [c for c in all_columns if c != keyword_col]
-                        compare_cols = st.multiselect(
-                            "Wybierz kolumny do PORÓWNANIA (max 2):",
-                            options=remaining_cols,
-                            default=remaining_cols[:2] if len(remaining_cols) >= 2 else remaining_cols
-                        )
-
-                    # Podgląd danych
-                    with st.expander("👀 Zobacz podgląd danych"):
-                        st.dataframe(df_sem[[keyword_col] + compare_cols].head())
-
-                    if st.button("🚀 Uruchom analizę cosinusową"):
-                        if not compare_cols:
-                            st.warning("Musisz wybrać przynajmniej jedną kolumnę do porównania!")
-                        else:
-                            progress_text = "Obliczanie embeddingów..."
-                            my_bar = st.progress(0, text=progress_text)
-                            
-                            total_rows = len(df_sem)
-                            
-                            # Przygotowanie słownika na wyniki {nazwa_kolumny: [lista_wynikow]}
-                            results_dict = {col: [] for col in compare_cols}
-
-                            for i, row in df_sem.iterrows():
-                                # 1. Embedding słowa kluczowego
-                                vec_kw = get_embedding(str(row[keyword_col]), client)
-
-                                # 2. Pętla po kolumnach do porównania
-                                for col_name in compare_cols:
-                                    vec_target = get_embedding(str(row[col_name]), client)
-                                    score = cosine_similarity(vec_kw, vec_target)
-                                    results_dict[col_name].append(round(score, 4))
-                                
-                                # Pasek postępu
-                                percent_complete = min((i + 1) / total_rows, 1.0)
-                                my_bar.progress(percent_complete, text=f"Przetwarzanie wiersza {i+1} z {total_rows}")
-
-                            # Dodanie wyników do DataFrame
-                            # Tworzymy nazwy nowych kolumn np. 'score_match_MetaTitle'
-                            sort_column = None
-                            
-                            for col_name, scores in results_dict.items():
-                                new_col_name = f"score_match_{col_name}"
-                                df_sem[new_col_name] = scores
-                                # Zapamiętujemy ostatnią kolumnę wyniku do sortowania
-                                sort_column = new_col_name
-
-                            # Sortowanie (rosnąco - najgorsze dopasowania na górze)
-                            if sort_column:
-                                df_sem = df_sem.sort_values(by=sort_column, ascending=True)
-                            
-                            my_bar.empty()
-                            st.success("🎉 Analiza zakończona!")
-
-                            st.write("### Wyniki (posortowane wg dopasowania ostatniej kolumny):")
-                            st.dataframe(df_sem.head(10))
-
-                            st.download_button(
-                                label="📥 Pobierz Raport Finalny (CSV)",
-                                data=df_sem.to_csv(sep=';', index=False).encode('utf-8'),
-                                file_name=f"RAPORT_FINALNY_{uploaded_sem.name}",
-                                mime='text/csv',
-                            )
-
-                except Exception as e:
-                    st.error(f"Wystąpił błąd podczas przetwarzania pliku: {e}")
-                    st.info("Spróbuj sprawdzić czy plik jest poprawnym CSV rozdzielonym średnikami.")
 
 # ==========================================
     # ZAKŁADKA 3: INTELIGENTNY NEWSLETTER (SMART MERGE)
