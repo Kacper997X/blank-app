@@ -311,6 +311,16 @@ with tab1:
 # ==========================================
 with tab2:
     st.subheader("Generuj z gotowych danych")
+
+
+    # --- DODANA SEKCJA Z INSTRUKCJĄ DLA UŻYTKOWNIKA ---
+    st.info("""
+    **ℹ️ Instrukcja przygotowania pliku:**
+    1. Plik musi być formatu **CSV**.
+    2. Separator kolumn to **średnik (;)**.
+    3. Plik powinien zawierać kolumny z danymi: **URL, Title, Description** (nazwy kolumn mogą być inne, dopasujesz je poniżej).
+    """)
+    # --------------------------------------------------
     
     col_d1, col_d2 = st.columns([1, 3])
     with col_d1:
