@@ -123,7 +123,7 @@ def get_embedding(text, client):
         # W razie błędu zwracamy wektor zerowy, żeby nie wywalić całego procesu
         return np.zeros(3072)
 
-def cosine_similarity(a, b):
+def calculate_simple_similarity(a, b):
     """Oblicza podobieństwo (0 do 1)."""
     if np.all(a == 0) or np.all(b == 0):
         return 0.0
@@ -539,7 +539,7 @@ with tab3:
                             # 2. Pętla po kolumnach do porównania
                             for col_name in compare_cols:
                                 vec_target = get_embedding(str(row[col_name]), client)
-                                score = cosine_similarity(vec_kw, vec_target)
+                                score = calculate_simple_similarity(vec_kw, vec_target)
                                 results_dict[col_name].append(round(score, 4))
                             
                             # Pasek postępu
