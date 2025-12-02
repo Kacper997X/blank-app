@@ -313,7 +313,7 @@ def main():
     st.title("🛠️ SEO Narzędzia")
     
     # --- Zakładki ---
-    tab1 = st.tabs(["📝 1. SEO Macerator"])
+    [tab1] = st.tabs(["📝 1. SEO Macerator"])
 
     # ==========================================
     # ZAKŁADKA 1: GENERATOR (NIENARUSZONA)
