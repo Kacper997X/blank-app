@@ -201,7 +201,7 @@ def generate_keyword_ai(url, title, description, user_instructions, client):
 st.title("🧠 SEO Keyword Generator Pro")
 st.markdown("Narzędzie generuje pliki wsadowe (CSV) gotowe do analizy embeddingowej.")
 
-tab1, tab2 = st.tabs(["🌍 1. Ze Scrapowaniem (Z URLi)", "📂 2. Z gotowego pliku (CSV)"])
+tab1, tab2 = st.tabs(["🌍 1. Generowanie Keyword ze Scrapowaniem (Z URLi)", "📂 2. Generowanie keyword gotowego pliku (CSV)"])
 
 # ==========================================
 # ZAKŁADKA 1: SCRAPING
