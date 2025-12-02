@@ -4,11 +4,10 @@ import requests
 from bs4 import BeautifulSoup
 from openai import OpenAI
 
-# 1. KONFIGURACJA STRONY (Musi być na samym początku)
-st.set_page_config(page_title="SEO URL Analyzer", page_icon="🔍")
+# 1. KONFIGURACJA STRONY
+st.set_page_config(page_title="SEO URL Analyzer Pro", page_icon="🧠")
 
 # 2. INICJALIZACJA KLIENTA OPENAI
-# To naprawia błąd "NameError: name 'client' is not defined"
 try:
     api_key = st.secrets["OPENAI_API_KEY"]
     client = OpenAI(api_key=api_key)
@@ -21,7 +20,6 @@ except Exception as e:
 def get_seo_metadata(url):
     """Pobiera Title i Meta Description z podanego URL."""
     try:
-        # Udajemy przeglądarkę, żeby serwery nas nie blokowały
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
@@ -33,7 +31,6 @@ def get_seo_metadata(url):
         title = title_tag.get_text().strip() if title_tag else ""
         
         # Pobieranie Meta Description
-        # Szukamy zarówno 'description' jak i 'Description' (wielkość liter ma znaczenie w kodzie, choć nie w HTML)
         meta_desc_tag = soup.find('meta', attrs={'name': 'description'})
         if not meta_desc_tag:
             meta_desc_tag = soup.find('meta', attrs={'name': 'Description'})
@@ -42,62 +39,97 @@ def get_seo_metadata(url):
         
         return title, description
     except Exception as e:
-        # W razie błędu zwracamy None, żeby potem oznaczyć status jako Błąd
         return None, None 
 
-def generate_target_keyword(title, description, client):
-    """Używa AI do zgadnięcia frazy kluczowej na podstawie meta tagów."""
+def generate_target_keyword_advanced(url, title, description, user_instructions, client):
+    """
+    Zaawansowana funkcja AI, która analizuje typ strony i stosuje odpowiednią strategię
+    doboru słowa kluczowego, uwzględniając preferencje użytkownika.
+    """
     
-    # Jeśli scraping się nie udał, nie pytamy AI
     if not title and not description:
         return "Błąd pobierania danych"
         
+    # Budujemy zaawansowany prompt z logiką biznesową
     prompt = f"""
-    Jesteś ekspertem SEO. Przeanalizuj poniższe dane ze strony internetowej:
-    
+    Jesteś Ekspertem SEO (Senior SEO Strategist). Twoim zadaniem jest reverse-engineering słowa kluczowego (Main Keyword) dla podanego adresu URL.
+
+    DANE WEJŚCIOWE:
+    URL: {url}
     Meta Title: {title}
     Meta Description: {description}
     
-    Zadanie: Zidentyfikuj JEDNĄ główną frazę kluczową (Main Keyword), pod którą ta strona jest najprawdopodobniej optymalizowana.
-    Wypisz tylko tę frazę, bez cudzysłowów i zbędnych komentarzy.
+    DODATKOWE INSTRUKCJE OD UŻYTKOWNIKA (PRIORYTETOWE):
+    "{user_instructions}"
+
+    LOGIKA POSTĘPOWANIA (Zastosuj odpowiednią strategię):
+    1. Zidentyfikuj typ podstrony na podstawie URL i Title:
+       - STRONA GŁÓWNA (Homepage) -> Fraza to nazwa Brandu/Marki.
+       - PRODUKT (Product Page) -> Fraza to konkretna Nazwa Produktu (np. "Nike Air Max 90", a nie "Kup buty sportowe").
+       - KATEGORIA (Category Page) -> Fraza to Nazwa Kategorii (np. "Buty do biegania", a nie "Najlepsze buty do biegania w sklepie").
+       - ARTYKUŁ BLOGOWY (Blog Post) -> Fraza to główny temat wyciągnięty z tytułu (np. "jak wiązać krawat").
+    
+    2. Zasady edycji:
+       - Nie kopiuj 1:1. Użyj swojej wiedzy, aby fraza była naturalna dla wyszukiwarki (to co wpisuje użytkownik w Google).
+       - Usuń zbędne słowa typu "Tania oferta", "Sklep online", "Sprawdź teraz", chyba że użytkownik nakazał inaczej.
+       - Jeśli instrukcje użytkownika są sprzeczne z powyższą logiką, ZAWSZE słuchaj użytkownika.
+
+    OUTPUT:
+    Wypisz TYLKO wynikową frazę kluczową. Żadnych cudzysłowów, żadnych wyjaśnień typu "Moja propozycja to...".
     """
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini", # Model mini jest idealny do tego zadania (tani i szybki)
+            model="gpt-4o-mini", 
             messages=[
-                {"role": "system", "content": "You are a helpful SEO assistant."},
+                {"role": "system", "content": "You are a helpful SEO assistant focused on search intent extraction."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.0
+            temperature=0.0 # Zero dla powtarzalności wyników
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Błąd AI: {str(e)}"
 
-# --- UI (INTERFEJS UŻYTKOWNIKA) ---
+# --- UI STREAMLIT ---
 
-st.header("🔍 Generator Frazy z URLi")
+st.header("🧠 Inteligentny Generator Fraz SEO")
 st.markdown("""
-To narzędzie wchodzi na podane strony, pobiera ich **Meta Title** i **Description**, 
-a następnie prosi AI o wskazanie, na jaką **frazę kluczową** strona jest pozycjonowana.
+To narzędzie crawluje podane adresy, wyciąga ich Meta Title i Meta Description, oraz wyznacza główne słowo kluczowe.
 """)
 
-# Pole tekstowe na URLe
-urls_input = st.text_area(
-    "Wklej adresy URL (każdy w nowej linii):",
-    height=150,
-    placeholder="https://przyklad.pl/podstrona1\nhttps://przyklad.pl/podstrona2"
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    urls_input = st.text_area(
+        "1. Wklej adresy URL (każdy w nowej linii):",
+        height=200,
+        placeholder="https://sklep.pl/buty-meskie\nhttps://sklep.pl/buty-meskie/nike-air-max\nhttps://blog.sklep.pl/jak-dobrac-rozmiar"
+    )
+
+with col2:
+    st.info("💡 Wskazówka")
+    st.markdown("""
+    AI automatycznie wykryje:
+    * 📦 **Produkt** -> Nazwa modelu
+    * 📂 **Kategoria** -> Nazwa kategorii
+    * 🏠 **Home** -> Nazwa Brandu
+    * 📝 **Blog** -> Temat wpisu
+    """)
+
+# Nowe pole na preferencje użytkownika
+user_prefs = st.text_input(
+    "2. (Opcjonalne) Twoje dodatkowe instrukcje dla AI:",
+    placeholder="Np. 'Zawsze dodawaj słowo Opinie do produktów' albo 'Ignoruj nazwy marek w kategoriach'",
+    help="To co tu wpiszesz, zostanie doklejone do promptu i będzie miało najwyższy priorytet."
 )
 
-if st.button("🚀 Analizuj URLe i generuj frazy", type="primary"):
+if st.button("🚀 Analizuj i generuj frazy", type="primary"):
     
-    # Walidacja klienta OpenAI przed startem
     if not client:
         st.error("Nie można uruchomić analizy bez poprawnego klucza API.")
         st.stop()
 
-    # Przygotowanie listy URLi (usuwanie pustych linii)
     url_list = [url.strip() for url in urls_input.split('\n') if url.strip()]
     
     if not url_list:
@@ -109,17 +141,16 @@ if st.button("🚀 Analizuj URLe i generuj frazy", type="primary"):
         
         total_urls = len(url_list)
         
-        # --- GŁÓWNA PĘTLA ---
         for i, url in enumerate(url_list):
-            # Wyświetlanie aktualnie przetwarzanego linku
-            status_text.text(f"⏳ Przetwarzanie ({i+1}/{total_urls}): {url}")
+            status_text.text(f"⏳ Analiza kontekstowa ({i+1}/{total_urls}): {url}")
             
-            # Krok 1: Scraping (Pobieranie danych ze strony)
+            # 1. Scraping
             title, desc = get_seo_metadata(url)
             
-            # Krok 2: AI (Analiza danych)
+            # 2. AI z nową logiką i instrukcjami użytkownika
             if title is not None:
-                suggested_keyword = generate_target_keyword(title, desc, client)
+                # Przekazujemy teraz url i user_prefs do funkcji
+                suggested_keyword = generate_target_keyword_advanced(url, title, desc, user_prefs, client)
                 status = "Sukces"
             else:
                 title = "Błąd pobierania"
@@ -127,31 +158,29 @@ if st.button("🚀 Analizuj URLe i generuj frazy", type="primary"):
                 suggested_keyword = "-"
                 status = "Błąd HTTP/404"
             
-            # Zapisanie wyniku do listy
             results.append({
                 "URL": url,
                 "Meta Title": title,
                 "Meta Description": desc,
-                "AI Proponowana Fraza": suggested_keyword,
+                "AI Fraza (Strategia + Preferencje)": suggested_keyword,
                 "Status": status
             })
             
-            # Aktualizacja paska postępu
             progress_bar.progress((i + 1) / total_urls)
             
-        # --- KONIEC PĘTLI ---
         progress_bar.empty()
-        status_text.success("✅ Zakończono analizę wszystkich linków!")
+        status_text.success("✅ Gotowe! AI zastosowało logikę typów stron.")
         
-        # Wyświetlenie wyników w tabeli
         df_results = pd.DataFrame(results)
         st.dataframe(df_results, use_container_width=True)
         
-        # Przycisk pobierania CSV
+        # Nazwa pliku zawiera informację, jeśli użyto customowych instrukcji
+        filename_suffix = "_custom" if user_prefs else ""
+        
         csv_data = df_results.to_csv(sep=';', index=False).encode('utf-8')
         st.download_button(
-            label="📥 Pobierz wyniki (CSV Excel)",
+            label="📥 Pobierz Raport (CSV)",
             data=csv_data,
-            file_name="analiza_seo_urls.csv",
+            file_name=f"analiza_seo_smart{filename_suffix}.csv",
             mime="text/csv"
         )
