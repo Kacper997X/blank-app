@@ -10,3 +10,5 @@ python-docx
 scikit-learn
 beautifulsoup4
 requests
+seaborn
+matplotlib.pyplot
