@@ -10,6 +10,8 @@ import bcrypt
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+import plotly.express as px
+from sklearn.metrics.pairwise import cosine_similarity
 
 # --- KONFIGURACJA LOGOWANIA ---
 logging.basicConfig(
@@ -576,130 +578,179 @@ with tab3:
             st.error("Brak klucza API w secrets!")
 
 # ==========================================
-# ZAKŁADKA 4: MATRIX KANIBALIZACJI (DODANA)
+# ZAKŁADKA 4: AUDYT SITE FOCUS (TOPICAL AUTHORITY)
 # ==========================================
 with tab4:
-    st.header("🕸️ Matrix Kanibalizacji (Każdy z Każdym)")
+    st.header("🎯 Audyt Spójności Tematycznej (Site Focus & Radius)")
     st.markdown("""
-    Narzędzie pobiera treść z listy URLi, tworzy wektory i porównuje każdą stronę z każdą inną.
-    Służy do wykrywania **Duplicate Content** oraz **Kanibalizacji Słów Kluczowych**.
+    To narzędzie bada **Architekturę Informacji** pod kątem semantycznym.
+    1. Pobiera Title, H1 i Description z podanych URLi.
+    2. Wyznacza "Centroid" (tematyczny środek całej domeny).
+    3. Oblicza **Site Radius** (odległość każdej strony od tego środka).
+    
+    **Interpretacja:**
+    * **Mały Radius (< 0.25):** Rdzeń tematyczny (Core Content).
+    * **Duży Radius (> 0.60):** Treści off-topic (Toxic Content).
     """)
 
-    col_in, col_opt = st.columns([2, 1])
+    col_ta_input, col_ta_info = st.columns([2, 1])
     
-    with col_in:
-        urls_matrix_input = st.text_area(
-            "Wklej listę URLi do sprawdzenia (jeden pod drugim):", 
+    with col_ta_input:
+        ta_urls_input = st.text_area(
+            "Wklej listę URLi domeny (jeden pod drugim):",
             height=250,
-            placeholder="https://domena.pl/artykul-1\nhttps://domena.pl/artykul-2",
-            key="matrix_input"
+            placeholder="https://semilac.pl/\nhttps://semilac.pl/lakiery",
+            key="ta_input"
         )
-    
-    with col_opt:
-        st.info("⚙️ Ustawienia")
-        threshold = st.slider("Pokaż pary o podobieństwie powyżej:", 0.0, 1.0, 0.60, 0.05)
-        st.caption("0.0 = Pokaż wszystko (Pełny raport)\n0.8 = Tylko silne duplikaty")
+        
+    with col_ta_info:
+        st.info("ℹ️ Kluczowa Metryka")
+        st.markdown("""
+        **Domain Focus:** Liczba od 0 do 1.
+        
+        Im wyższa wartość, tym bardziej Twoja strona jest "zbita" tematycznie i tym większy autorytet w oczach Google.
+        """)
 
-    if st.button("🚀 Generuj Matrix Podobieństwa", key="btn_matrix"):
+    if st.button("🚀 Oblicz Topical Authority", key="btn_ta"):
         if not client:
             st.error("Brak klucza API!")
             st.stop()
             
-        # Przygotowanie listy URLi
-        url_list = [u.strip() for u in urls_matrix_input.split('\n') if u.strip()]
+        url_list = [u.strip() for u in ta_urls_input.split('\n') if u.strip()]
         
-        if len(url_list) < 2:
-            st.warning("Podaj co najmniej 2 adresy URL, aby móc je porównać.")
+        if len(url_list) < 3:
+            st.warning("Podaj przynajmniej 3 adresy URL, aby wyznaczyć sensowny środek tematyczny.")
         else:
-            # Kontener na wyniki
-            embeddings_list = []
-            valid_urls = []
-            short_names = [] # Do wykresu
+            # Kontenery na dane
+            scraped_data = []
+            embeddings = []
             
-            # UI Elementy
+            # Pasek postępu
             progress_bar = st.progress(0)
             status_text = st.empty()
             
             # --- 1. SCRAPING I EMBEDDINGI ---
             for i, url in enumerate(url_list):
-                status_text.text(f"Pobieranie i analiza ({i+1}/{len(url_list)}): {url}")
+                status_text.text(f"Analiza ({i+1}/{len(url_list)}): {url}")
                 
-                # Używamy nowej funkcji extract_clean_text
-                text_content = extract_clean_text(url)
-                
-                if text_content and len(text_content) > 100:
-                    # Generowanie embeddingu (używamy istniejącej funkcji get_embedding)
-                    emb = get_embedding(text_content, client)
-                    
-                    embeddings_list.append(emb)
-                    valid_urls.append(url)
-                    
-                    # Skracanie nazwy do wykresu (np. domena.pl/slug -> .../slug)
-                    short_name = url.rstrip('/').split('/')[-1][:15] + "..."
-                    short_names.append(short_name)
-                else:
-                    st.warning(f"Pominięto (brak treści/błąd): {url}")
+                try:
+                    # Szybki request po metadane
+                    headers = {'User-Agent': 'Mozilla/5.0'}
+                    r = requests.get(url, headers=headers, timeout=5)
+                    if r.status_code == 200:
+                        soup = BeautifulSoup(r.content, 'html.parser')
+                        
+                        title = soup.title.string.strip() if soup.title and soup.title.string else ""
+                        h1 = soup.find('h1').get_text().strip() if soup.find('h1') else ""
+                        meta = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'name': 'Description'})
+                        desc = meta['content'].strip() if meta else ""
+                        
+                        # Tekst do analizy AI (Title + H1 + Desc)
+                        combined_text = f"{title} {h1} {desc}".strip()
+                        
+                        if len(combined_text) > 10:
+                            # Używamy tej samej funkcji get_embedding co w innych zakładkach
+                            emb = get_embedding(combined_text, client)
+                            embeddings.append(emb)
+                            scraped_data.append({
+                                "url": url,
+                                "title": title,
+                                "h1": h1,
+                                "combined_text": combined_text
+                            })
+                except Exception as e:
+                    pass # Ignorujemy błędy pojedynczych stron
                 
                 progress_bar.progress((i + 1) / len(url_list))
             
             progress_bar.empty()
-            status_text.success("✅ Dane pobrane. Generuję macierz...")
-
-            if len(embeddings_list) > 1:
-                # --- 2. OBLICZENIA MACIERZOWE ---
-                # Używamy sklearn dla szybkości (zakładam, że jest zainstalowany, bo był w imports w Colabie)
-                from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine
+            status_text.empty()
+            
+            # --- 2. OBLICZENIA MATEMATYCZNE ---
+            if len(embeddings) > 2:
+                matrix = np.array(embeddings)
                 
-                matrix = sklearn_cosine(embeddings_list)
+                # Obliczanie Centroidu (Średnia wektorów)
+                centroid = np.mean(matrix, axis=0)
                 
-                # --- 3. HEATMAPA (WYKRES) ---
-                st.subheader("Mapa Cieplna Podobieństwa")
-                fig, ax = plt.subplots(figsize=(10, 8))
-                sns.heatmap(matrix, xticklabels=short_names, yticklabels=short_names, cmap="Greens", annot=True, fmt=".2f", ax=ax)
-                st.pyplot(fig)
+                # Obliczanie odległości (Site Radius)
+                # Cosine Similarity zwraca 1 dla identycznych, 0 dla różnych.
+                # Site Radius to "odległość", czyli 1 - similarity.
+                similarities = cosine_similarity(matrix, [centroid])
+                radii = 1 - similarities.flatten()
                 
-                # --- 4. TABELA WYNIKÓW ---
-                st.subheader(f"Lista Par (Podobieństwo >= {threshold})")
-                pairs = []
-                all_pairs = [] # Do CSV chcemy wszystko
+                # Dodanie wyników do DataFrame
+                df_res = pd.DataFrame(scraped_data)
+                df_res['SiteRadius'] = radii
                 
-                # Przechodzimy przez górny trójkąt macierzy
-                for i in range(len(matrix)):
-                    for j in range(i + 1, len(matrix)):
-                        score = matrix[i][j]
-                        
-                        # Zapisz do pełnej listy
-                        all_pairs.append({
-                            "URL A": valid_urls[i],
-                            "URL B": valid_urls[j],
-                            "Podobieństwo": round(score, 4)
-                        })
-
-                        # Zapisz do listy wyświetlanej (jeśli spełnia warunek suwaka)
-                        if score >= threshold:
-                            pairs.append({
-                                "URL A": valid_urls[i],
-                                "URL B": valid_urls[j],
-                                "Podobieństwo": round(score, 4)
-                            })
+                # Metryki globalne
+                avg_radius = df_res['SiteRadius'].mean()
+                domain_focus = 1 / (1 + avg_radius)
                 
-                # Wyświetlanie w aplikacji (tylko przefiltrowane)
-                if pairs:
-                    df_display = pd.DataFrame(pairs).sort_values(by="Podobieństwo", ascending=False)
-                    st.dataframe(df_display, use_container_width=True)
-                else:
-                    st.info(f"Brak par o podobieństwie powyżej {threshold}. Zmień ustawienie suwaka.")
-
-                # --- 5. POBIERANIE PEŁNEGO RAPORTU ---
-                if all_pairs:
-                    df_full = pd.DataFrame(all_pairs).sort_values(by="Podobieństwo", ascending=False)
-                    csv_data = df_full.to_csv(sep=';', index=False).encode('utf-8')
-                    
-                    st.download_button(
-                        label="📥 Pobierz Pełny Raport Matrix (CSV)",
-                        data=csv_data,
-                        file_name="matrix_kanibalizacji_full.csv",
-                        mime="text/csv"
-                    )
+                # --- 3. PREZENTACJA WYNIKÓW ---
+                
+                st.success("✅ Analiza zakończona!")
+                
+                # Kafelki z wynikami
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Liczba stron", len(df_res))
+                m2.metric("Domain Focus", f"{domain_focus:.4f}", delta_color="normal", help="Im bliżej 1.0 tym lepiej")
+                m3.metric("Średni Radius", f"{avg_radius:.4f}", help="Niższy wynik = lepsze skupienie")
+                
+                st.divider()
+                
+                # Wykres (Scatter Plot)
+                st.subheader("Mapa Spójności (Wizualizacja)")
+                
+                # Dodajemy losowy jitter do osi Y, żeby punkty się nie nakładały
+                df_res['Y_Random'] = np.random.normal(0, 0.05, len(df_res))
+                df_res['Label'] = df_res['title'].apply(lambda x: x[:60] + "..." if len(x) > 60 else x)
+                
+                fig = px.scatter(
+                    df_res,
+                    x="SiteRadius",
+                    y="Y_Random",
+                    hover_data=["url", "title"],
+                    text="Label",
+                    color="SiteRadius",
+                    color_continuous_scale="RdYlGn_r", # Zielony blisko (0), Czerwony daleko (1)
+                    title="Rozkład treści względem głównego tematu",
+                    labels={"SiteRadius": "Odległość od Centrum (0=Idealnie)"},
+                    height=600
+                )
+                fig.update_yaxes(visible=False, showticklabels=False)
+                fig.update_traces(textposition='top center')
+                fig.add_vline(x=avg_radius, line_dash="dash", annotation_text="Średnia")
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Tabela danych
+                st.subheader("Szczegółowe Wyniki")
+                
+                def get_status(r):
+                    if r < 0.25: return "🟢 CORE (Rdzeń)"
+                    if r < 0.55: return "🟡 SUPPORT (Wsparcie)"
+                    return "🔴 OFF-TOPIC (Do weryfikacji)"
+                
+                df_res['Status'] = df_res['SiteRadius'].apply(get_status)
+                df_res = df_res.sort_values(by="SiteRadius")
+                
+                st.dataframe(
+                    df_res[['Status', 'SiteRadius', 'url', 'title']],
+                    use_container_width=True,
+                    column_config={
+                        "SiteRadius": st.column_config.NumberColumn(format="%.4f"),
+                        "url": st.column_config.LinkColumn()
+                    }
+                )
+                
+                # Pobieranie
+                st.download_button(
+                    label="📥 Pobierz Raport Topical Authority (CSV)",
+                    data=df_res.to_csv(sep=';', index=False).encode('utf-8'),
+                    file_name="raport_topical_authority.csv",
+                    mime="text/csv"
+                )
+                
             else:
-                st.error("Nie udało się pobrać wystarczającej liczby danych do porównania.")
+                st.error("Nie udało się pobrać wystarczającej ilości danych (min. 3 poprawne strony).")
