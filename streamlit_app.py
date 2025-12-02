@@ -577,8 +577,48 @@ Przykład odpowiedzi:
         
         df_meta = None
         if uploaded_file_meta is not None:
-            df_meta = pd.read_csv(uploaded_file_meta)
-            st.write("Podgląd danych:", df_meta.head(3))
+            # --- DODANO: Wybór separatora i obsługa błędów ---
+            st.markdown("##### Ustawienia pliku CSV")
+            col_sep, col_enc = st.columns(2)
+            with col_sep:
+                separator = st.selectbox(
+                    "Wybierz separator kolumn", 
+                    options=[", (Przecinek - standard)", "; (Średnik - Excel PL)", "\\t (Tabulator)"],
+                    index=0 # Domyślnie przecinek, zmień na 1 jeśli większość masz ze średnikami
+                )
+            
+            # Mapowanie wyboru na znak
+            sep_char = ',' 
+            if ";" in separator: sep_char = ';'
+            elif "\\t" in separator: sep_char = '\t'
+
+            try:
+                # Próba wczytania pliku z wybranym separatorem i obsługą błędnych linii
+                df_meta = pd.read_csv(
+                    uploaded_file_meta, 
+                    sep=sep_char, 
+                    on_bad_lines='warn', # Ostrzega zamiast wywalać błąd przy uszkodzonej linii
+                    engine='python' # Silnik python jest bardziej wyrozumiały dla błędów
+                )
+                
+                st.write("Podgląd danych (pierwsze 3 wiersze):")
+                st.dataframe(df_meta.head(3))
+                
+                # --- Reszta Twojego kodu z mapowaniem kolumn ---
+                st.markdown("---")
+                st.subheader("1. Mapowanie kolumn")
+                # ... (tutaj ciąg dalszy Twojego kodu z poprzedniej odpowiedzi) ...
+                
+                col1, col2, col3 = st.columns(3)
+                cols = df_meta.columns.tolist()
+                
+                # ... itd.
+
+            except Exception as e:
+                st.error(f"Nie udało się wczytać pliku. Prawdopodobnie wybrałeś zły separator.")
+                st.warning(f"Szczegóły błędu: {e}")
+                st.info("Spróbuj zmienić separator powyżej (np. na średnik ';').")
+                st.stop() # Zatrzymuje działanie, żeby nie sypać błędami dalej
             
             st.markdown("---")
             st.subheader("1. Mapowanie kolumn")
