@@ -566,6 +566,146 @@ Przykład odpowiedzi:
                     st.warning("Upewnij się, że masz ustawiony klucz OPENAI_API_KEY w secrets.")
 
 # ==========================================
+    # ZAKŁADKA 2: GENERATOR META DESCRIPTION
+    # ==========================================
+    with tab2:
+        st.header("Generator Meta Description")
+        st.info("To narzędzie generuje opisy na podstawie Title i H1. Możesz edytować prompt, aby dostosować styl (np. dodać CTA).")
+
+        # 1. Wgranie pliku
+        uploaded_file_meta = st.file_uploader("Wgraj plik CSV (musi zawierać URL, Title, H1)", type=['csv'], key="meta_uploader")
+        
+        df_meta = None
+        if uploaded_file_meta is not None:
+            df_meta = pd.read_csv(uploaded_file_meta)
+            st.write("Podgląd danych:", df_meta.head(3))
+            
+            st.markdown("---")
+            st.subheader("1. Mapowanie kolumn")
+            col1, col2, col3 = st.columns(3)
+            
+            # Automatyczne wykrywanie kolumn jeśli nazwy są typowe, w przeciwnym razie domyślny index
+            cols = df_meta.columns.tolist()
+            
+            with col1:
+                # Próba znalezienia kolumny z "url" w nazwie
+                default_url = next((i for i, c in enumerate(cols) if 'url' in c.lower()), 0)
+                url_col = st.selectbox("Kolumna URL", cols, index=default_url)
+            with col2:
+                # Próba znalezienia kolumny z "title" w nazwie
+                default_title = next((i for i, c in enumerate(cols) if 'title' in c.lower()), 0)
+                title_col = st.selectbox("Kolumna Meta Title", cols, index=default_title)
+            with col3:
+                # Próba znalezienia kolumny z "h1" w nazwie
+                default_h1 = next((i for i, c in enumerate(cols) if 'h1' in c.lower()), 0)
+                h1_col = st.selectbox("Kolumna H1", cols, index=default_h1)
+
+            st.markdown("---")
+            st.subheader("2. Konfiguracja Promptu")
+
+            # --- DOMYŚLNE PROMPTY DLA META ---
+            default_meta_system = """Jesteś ekspertem SEO i Copywriterem. Twoim celem jest zwiększenie CTR (Click Through Rate) z wyników wyszukiwania Google.
+Zasady pisania:
+1. Długość: od 130 do 155 znaków (to krytyczne, nie przekraczaj tego).
+2. Zawrzyj słowa kluczowe z Title i H1, ale w naturalny sposób.
+3. Język korzyści (benefit-oriented).
+4. Zakończ Call to Action (np. Sprawdź!, Zobacz ofertę, Wejdź).
+5. Nie używaj cudzysłowów na początku i końcu odpowiedzi.
+6. Pisz w języku Polskim."""
+
+            default_meta_user = """Stwórz Meta Description dla podstrony.
+Dane:
+- URL: {url}
+- Meta Title: {title}
+- Nagłówek H1: {h1}
+
+Meta Description:"""
+
+            # --- EDYTOWALNE POLA TEKSTOWE ---
+            system_prompt_meta = st.text_area(
+                "System Prompt (Rola AI i zasady)", 
+                value=default_meta_system, 
+                height=200,
+                key="meta_sys_prompt"
+            )
+            
+            user_prompt_meta = st.text_area(
+                "User Prompt (Szablon zapytania)", 
+                value=default_meta_user, 
+                height=200, 
+                help="Użyj {title}, {h1} oraz {url} jako zmiennych, które zostaną podmienione danymi z pliku.",
+                key="meta_usr_prompt"
+            )
+
+            # Wybór modelu (korzystamy z listy zdefiniowanej na początku skryptu)
+            model_meta = st.selectbox("Wybierz model AI", AVAILABLE_MODELS, key="meta_model")
+
+            # Przycisk generowania
+            if st.button("🚀 Generuj Meta Description"):
+                try:
+                    api_key = st.secrets["OPENAI_API_KEY"]
+                    client = OpenAI(api_key=api_key)
+                    
+                    progress_bar = st.progress(0, text="Rozpoczynam generowanie...")
+                    results_meta = []
+                    total_rows = len(df_meta)
+                    
+                    for index, row in df_meta.iterrows():
+                        # 1. Pobieramy dane z wiersza
+                        r_url = str(row[url_col])
+                        r_title = str(row[title_col])
+                        r_h1 = str(row[h1_col])
+                        
+                        # 2. Formatujemy prompt (podmieniamy {title}, {h1} na dane)
+                        # escape_braces nie jest tu potrzebne jeśli user nie używa JSON w prompcie, 
+                        # ale dla bezpieczeństwa można by to dodać. Tutaj proste formatowanie:
+                        try:
+                            prompt_filled = user_prompt_meta.format(
+                                url=r_url,
+                                title=r_title,
+                                h1=r_h1
+                            )
+                        except KeyError as e:
+                            st.error(f"Błąd w strukturze promptu! Użyłeś zmiennej której nie ma w kodzie: {e}")
+                            st.stop()
+
+                        # 3. Strzał do API
+                        try:
+                            response = client.chat.completions.create(
+                                model=model_meta,
+                                messages=[
+                                    {"role": "system", "content": system_prompt_meta},
+                                    {"role": "user", "content": prompt_filled},
+                                ]
+                            )
+                            content = response.choices[0].message.content.strip()
+                            results_meta.append(content)
+                        except Exception as e:
+                            results_meta.append(f"Błąd API: {e}")
+                        
+                        # Aktualizacja paska
+                        progress_bar.progress((index + 1) / total_rows, text=f"Przetworzono {index + 1} z {total_rows}")
+
+                    # Zapis wyników
+                    df_meta['Generated_Meta_Description'] = results_meta
+                    df_meta['Length'] = df_meta['Generated_Meta_Description'].str.len()
+                    
+                    st.success("Zakończono!")
+                    st.dataframe(df_meta[[url_col, title_col, 'Generated_Meta_Description', 'Length']])
+                    
+                    # Pobieranie
+                    st.download_button(
+                        label="Pobierz wyniki CSV",
+                        data=df_meta.to_csv(index=False).encode('utf-8'),
+                        file_name='meta_descriptions.csv',
+                        mime='text/csv'
+                    )
+
+                except Exception as e:
+                    st.error(f"Wystąpił błąd ogólny: {e}")
+                    st.warning("Sprawdź klucz API w secrets.")
+
+# ==========================================
     # ZAKŁADKA 3: INTELIGENTNY NEWSLETTER (SMART MERGE)
     # ==========================================
     if False:
