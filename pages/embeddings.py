@@ -8,6 +8,8 @@ import logging
 import json
 import bcrypt
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 # --- KONFIGURACJA LOGOWANIA ---
 logging.basicConfig(
@@ -125,6 +127,36 @@ def cosine_similarity(a, b):
         return 0.0
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
+def extract_clean_text(url):
+    """Scraper wycinający menu i stopki (Anti-Boilerplate)."""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200: return None
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Usuwamy techniczne
+        for element in soup(["script", "style", "nav", "footer", "header", "aside", "form", "iframe", "noscript", "svg"]):
+            element.decompose()
+
+        text = soup.get_text(separator='\n')
+        lines = text.split('\n')
+        clean_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if len(line) < 30: continue
+            garbage_words = ["wszelkie prawa", "copyright", "polityka prywatności", "pliki cookies", "zobacz więcej", "czytaj dalej"]
+            if any(word in line.lower() for word in garbage_words): continue
+            clean_lines.append(line)
+        
+        final_text = ' '.join(clean_lines)
+        if len(final_text) < 100: return soup.get_text(separator=' ')[:5000]
+        return final_text[:20000]
+    except Exception:
+        return None
+
 
 def get_template_csv():
     """Generuje przykładowy plik CSV do pobrania."""
@@ -232,8 +264,12 @@ def generate_keyword_ai(url, title, description, user_instructions, client):
 st.title("🧠 SEO Embeddingi i Cosinusy")
 st.markdown("Narzędzie generuje pliki wsadowe (CSV) gotowe do analizy embeddingowej.")
 
-tab1, tab2, tab3 = st.tabs(["🌍 1. Generowanie Keyword ze Scrapowaniem (Z URLi)", "📂 2. Generowanie keyword gotowego pliku (CSV)","🧠 3. Analiza Embeddingowa"])
-
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🌍 1. Generowanie keyword (Z URLi)", 
+    "📂 2. Generowanie keyword (Z CSV)",
+    "🧠 3. Analiza Embeddingowa",
+    "🕸️ 4. Site Focus & Site Radius"
+])
 # ==========================================
 # ZAKŁADKA 1: SCRAPING
 # ==========================================
@@ -538,3 +574,132 @@ with tab3:
                 st.info("Spróbuj sprawdzić czy plik jest poprawnym CSV rozdzielonym średnikami.")
         else:
             st.error("Brak klucza API w secrets!")
+
+# ==========================================
+# ZAKŁADKA 4: MATRIX KANIBALIZACJI (DODANA)
+# ==========================================
+with tab4:
+    st.header("🕸️ Matrix Kanibalizacji (Każdy z Każdym)")
+    st.markdown("""
+    Narzędzie pobiera treść z listy URLi, tworzy wektory i porównuje każdą stronę z każdą inną.
+    Służy do wykrywania **Duplicate Content** oraz **Kanibalizacji Słów Kluczowych**.
+    """)
+
+    col_in, col_opt = st.columns([2, 1])
+    
+    with col_in:
+        urls_matrix_input = st.text_area(
+            "Wklej listę URLi do sprawdzenia (jeden pod drugim):", 
+            height=250,
+            placeholder="https://domena.pl/artykul-1\nhttps://domena.pl/artykul-2",
+            key="matrix_input"
+        )
+    
+    with col_opt:
+        st.info("⚙️ Ustawienia")
+        threshold = st.slider("Pokaż pary o podobieństwie powyżej:", 0.0, 1.0, 0.60, 0.05)
+        st.caption("0.0 = Pokaż wszystko (Pełny raport)\n0.8 = Tylko silne duplikaty")
+
+    if st.button("🚀 Generuj Matrix Podobieństwa", key="btn_matrix"):
+        if not client:
+            st.error("Brak klucza API!")
+            st.stop()
+            
+        # Przygotowanie listy URLi
+        url_list = [u.strip() for u in urls_matrix_input.split('\n') if u.strip()]
+        
+        if len(url_list) < 2:
+            st.warning("Podaj co najmniej 2 adresy URL, aby móc je porównać.")
+        else:
+            # Kontener na wyniki
+            embeddings_list = []
+            valid_urls = []
+            short_names = [] # Do wykresu
+            
+            # UI Elementy
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # --- 1. SCRAPING I EMBEDDINGI ---
+            for i, url in enumerate(url_list):
+                status_text.text(f"Pobieranie i analiza ({i+1}/{len(url_list)}): {url}")
+                
+                # Używamy nowej funkcji extract_clean_text
+                text_content = extract_clean_text(url)
+                
+                if text_content and len(text_content) > 100:
+                    # Generowanie embeddingu (używamy istniejącej funkcji get_embedding)
+                    emb = get_embedding(text_content, client)
+                    
+                    embeddings_list.append(emb)
+                    valid_urls.append(url)
+                    
+                    # Skracanie nazwy do wykresu (np. domena.pl/slug -> .../slug)
+                    short_name = url.rstrip('/').split('/')[-1][:15] + "..."
+                    short_names.append(short_name)
+                else:
+                    st.warning(f"Pominięto (brak treści/błąd): {url}")
+                
+                progress_bar.progress((i + 1) / len(url_list))
+            
+            progress_bar.empty()
+            status_text.success("✅ Dane pobrane. Generuję macierz...")
+
+            if len(embeddings_list) > 1:
+                # --- 2. OBLICZENIA MACIERZOWE ---
+                # Używamy sklearn dla szybkości (zakładam, że jest zainstalowany, bo był w imports w Colabie)
+                from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine
+                
+                matrix = sklearn_cosine(embeddings_list)
+                
+                # --- 3. HEATMAPA (WYKRES) ---
+                st.subheader("Mapa Cieplna Podobieństwa")
+                fig, ax = plt.subplots(figsize=(10, 8))
+                sns.heatmap(matrix, xticklabels=short_names, yticklabels=short_names, cmap="Greens", annot=True, fmt=".2f", ax=ax)
+                st.pyplot(fig)
+                
+                # --- 4. TABELA WYNIKÓW ---
+                st.subheader(f"Lista Par (Podobieństwo >= {threshold})")
+                pairs = []
+                all_pairs = [] # Do CSV chcemy wszystko
+                
+                # Przechodzimy przez górny trójkąt macierzy
+                for i in range(len(matrix)):
+                    for j in range(i + 1, len(matrix)):
+                        score = matrix[i][j]
+                        
+                        # Zapisz do pełnej listy
+                        all_pairs.append({
+                            "URL A": valid_urls[i],
+                            "URL B": valid_urls[j],
+                            "Podobieństwo": round(score, 4)
+                        })
+
+                        # Zapisz do listy wyświetlanej (jeśli spełnia warunek suwaka)
+                        if score >= threshold:
+                            pairs.append({
+                                "URL A": valid_urls[i],
+                                "URL B": valid_urls[j],
+                                "Podobieństwo": round(score, 4)
+                            })
+                
+                # Wyświetlanie w aplikacji (tylko przefiltrowane)
+                if pairs:
+                    df_display = pd.DataFrame(pairs).sort_values(by="Podobieństwo", ascending=False)
+                    st.dataframe(df_display, use_container_width=True)
+                else:
+                    st.info(f"Brak par o podobieństwie powyżej {threshold}. Zmień ustawienie suwaka.")
+
+                # --- 5. POBIERANIE PEŁNEGO RAPORTU ---
+                if all_pairs:
+                    df_full = pd.DataFrame(all_pairs).sort_values(by="Podobieństwo", ascending=False)
+                    csv_data = df_full.to_csv(sep=';', index=False).encode('utf-8')
+                    
+                    st.download_button(
+                        label="📥 Pobierz Pełny Raport Matrix (CSV)",
+                        data=csv_data,
+                        file_name="matrix_kanibalizacji_full.csv",
+                        mime="text/csv"
+                    )
+            else:
+                st.error("Nie udało się pobrać wystarczającej liczby danych do porównania.")
