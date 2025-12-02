@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # 1. KONFIGURACJA STRONY (Musi być na samym początku)
 st.set_page_config(
-    page_title="SEO Keyword Generator Pro", 
+    page_title="SEO Embeddingi i Cosinusy", 
     page_icon="🧠",
     layout="wide"
 )
@@ -44,7 +44,7 @@ def load_users():
         return {}
 
 def login(users):
-    st.title("🔐 Logowanie do Generatora Fraz")
+    st.title("🔐 Logowanie do SEO Maceratora")
     username = st.text_input("Nazwa użytkownika")
     password = st.text_input("Hasło", type="password")
     
