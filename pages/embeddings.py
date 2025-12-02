@@ -347,10 +347,11 @@ with tab2:
             with col_c2: sel_tit = st.selectbox("Kolumna Title:", cols, index=idx_tit)
             with col_c3: sel_des = st.selectbox("Kolumna Desc:", cols, index=idx_des)
             
-            # NOWOŚĆ: Dodane pole na instrukcje użytkownika w zakładce 2
+            # NOWOŚĆ: Dodane pole na instrukcje użytkownika w zakładce 2 (zamienione na text_area)
             st.markdown("#### 2. Dodatkowe instrukcje")
-            user_prefs_t2 = st.text_input(
+            user_prefs_t2 = st.text_area(
                 "Twoje instrukcje dla AI (opcjonalne):", 
+                height=130,
                 placeholder="Np. Ignoruj nazwy marek w kategoriach.", 
                 key="prefs_tab2"
             )
