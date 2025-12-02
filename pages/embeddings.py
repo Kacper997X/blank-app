@@ -4,6 +4,15 @@ import requests
 from bs4 import BeautifulSoup
 from openai import OpenAI
 import io
+import logging
+
+# --- KONFIGURACJA LOGOWANIA ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
 # 1. KONFIGURACJA STRONY
 st.set_page_config(
