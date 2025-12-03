@@ -93,14 +93,24 @@ if st.sidebar.button("Wyloguj"):
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Konfiguracja Matrixa")
 
-# Klucz API
-api_key = st.sidebar.text_input("OpenAI API Key", type="password")
-if not api_key:
-    try:
-        api_key = st.secrets["OPENAI_API_KEY"]
-    except:
-        api_key = os.environ.get("OPENAI_API_KEY")
+# --- NOWY KOD (DO WKLEJENIA) ---
+# 2. INICJALIZACJA KLIENTA OPENAI
+try:
+    # Pobieramy klucz bezpośrednio z secrets
+    api_key = st.secrets["OPENAI_API_KEY"]
+except FileNotFoundError:
+    # Obsługa błędu, jeśli plik secrets nie istnieje (np. lokalnie przed konfiguracją)
+    st.warning("Brak pliku .streamlit/secrets.toml")
+    api_key = st.sidebar.text_input("Podaj klucz OpenAI API ręcznie:", type="password")
+except KeyError:
+    # Obsługa błędu, jeśli plik jest, ale nie ma w nim klucza
+    st.warning("Klucz 'OPENAI_API_KEY' nie został znaleziony w secrets.")
+    api_key = st.sidebar.text_input("Podaj klucz OpenAI API ręcznie:", type="password")
 
+# Jeśli nadal nie mamy klucza, zatrzymujemy działanie
+if not api_key:
+    st.info("Wprowadź klucz API, aby rozpocząć.")
+    st.stop()
 # Suwak
 threshold = st.sidebar.slider("Próg podobieństwa", 0.0, 1.0, 0.5, 0.05)
 
@@ -161,8 +171,8 @@ def perform_analysis(url_list_raw, api_key_val):
 # APLIKACJA WŁAŚCIWA (MATRIX)
 # ==========================================
 
-st.title("🕵️ Masowa Analiza Podobieństwa (Matrix)")
-st.markdown("To jest moduł analizy kanibalizacji (uruchomiony na silniku Senuto Checkera).")
+st.title("🕵️ Podobieństwo cosinusowe adresów URL)")
+st.markdown("To jest moduł analizy badania podobieństwa cosinusowego URL.")
 
 url_input = st.text_area(
     "Lista URLi (jeden pod drugim):", 
