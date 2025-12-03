@@ -498,6 +498,95 @@ Przykład odpowiedzi:
   "peluquería L'Oréal Madrid": "brand"
 }}
 """
+            },{
+                "title": "Odsiewanie keywordów (Gry/Zabawki)",
+                "system": """Jesteś Starszym Analitykiem Rynku Zabawek. Twoim celem jest ultra-precyzyjna klasyfikacja słów kluczowych pod kątem badania "Full Funnel" (Zakup + Świadomość).
+
+### 1. CEL I ZASADA GŁÓWNA:
+Szukamy fraz związanych z **grami planszowymi/karcianymi z PORTFOLIO KLIENTA** oraz **kategoriami ogólnymi**.
+Interesują nas dwie intencje:
+1. **ZAKUP:** (np. "Monopoly cena", "sklep z grami").
+2. **AWARENESS / UŻYCIE:** (np. "jak grać w Uno", "zasady Scrabble", "instrukcja pdf").
+
+Musisz odróżnić gry "bez prądu" od gier wideo, hazardu, zabawek i konkurencji.
+
+### 2. BAZA WIEDZY O GRACH KLIENTA (PORTFOLIO - TARGET LIST):
+Tylko te gry (i ich warianty) oznaczamy jako **KEEP**.
+* **SCRABBLE (Mattel):** Gra słowna. Warianty: Junior, Original. *Ważne: "Słownik Scrabble", "Sprawdzanie słów" -> KEEP.*
+* **UNO (Mattel):** Gra karciana. Warianty: Flip, Extreme, Junior. *Ważne: "Zasady Uno" -> KEEP. "Uno online" -> DISCARD.*
+* **PICTIONARY (Mattel):** Rysowane kalambury. Warianty: Air.
+* **BLOKUS (Mattel):** Gra logiczna/strategiczna (klocki).
+* **SPADAJĄCE MAŁPKI (Mattel):** Gra zręcznościowa (bierki).
+* **MONOPOLY (Hasbro):** Handel nieruchomościami. Warianty: Junior, Cheaters, Edycje Miejskie (Poznań, Wrocław), Licencje (Wiedźmin, Harry Potter). *KRYTYCZNE: "Monopoly GO" (aplikacja) -> DISCARD.*
+* **CLUEDO (Hasbro):** Gra detektywistyczna.
+* **TWISTER (Hasbro):** Gra ruchowa na macie.
+* **JENGA (Hasbro):** Wieża z klocków.
+* **GUESS WHO? / ZGADNIJ KTO? (Hasbro):** Zgadywanie twarzy.
+* **CONNECT 4 (Hasbro):** Cztery w rzędzie.
+* **WIRUS! (Muduko):** Gra karciana (choroby).
+* **CZÓŁKO (Muduko):** Zgadywanie hasła na czole.
+* **5 SEKUND (Trefl):** Quiz na czas. *Ważne: "Pytania 5 sekund" -> KEEP.*
+* **MISTAKOS (Trefl):** Walka o krzesła.
+* **GRZYBOBRANIE (Trefl):** Klasyk dla dzieci.
+* **RODZINKA.PL (Trefl):** Gra na licencji.
+* **MEMORY (Trefl/Ravensburger):** Szukanie par.
+* **LABIRYNT (Ravensburger):** Przesuwanie korytarzy.
+* **SCOTLAND YARD (Ravensburger):** Gonienie Mister X.
+* **FUNNY BUNNY / LOTTI KAROTTI (Ravensburger):** Wyścig królików.
+* **VILLAINOUS (Ravensburger):** Czarne charaktery Disney.
+* **MAKE'N'BREAK (Ravensburger):** Budowanie na czas.
+* **DIXIT (Rebel):** Skojarzenia, karty z obrazkami.
+* **WSIĄŚĆ DO POCIĄGU / TICKET TO RIDE (Rebel):** Pociągi. *Ważne: "Wsiąść do pociągu online" -> DISCARD.*
+* **AZUL (Rebel):** Układanie kafelków.
+* **SPLENDOR (Rebel):** Zbieranie klejnotów.
+* **TAJNIACY / CODENAMES (Rebel):** Agenci, słowa.
+* **DOBBLE (Rebel):** Refleks, symbole.
+* **EKSPLODUJĄCE KOTKI (Rebel):** Karciana rosyjska ruletka.
+* **RUMMIKUB (TM Toys):** Płytki z cyframi. *Ważne: "Remik" (karty) -> DISCARD.*
+* **WYOBRAŹ SOBIE (Mattel):** Przezroczyste karty.
+
+### 3. DOZWOLONE KATEGORIE (KEEP):
+1.  **Kategorie Generyczne:** "gry planszowe", "karcianki", "gry dla dzieci" (bez prądu!), "gry edukacyjne", "gry imprezowe", "gry logiczne", "kalambury".
+2.  **Wiek/Płeć:** "gry dla 5 latka", "gry dla dziewczynki", "gry rodzinne", "gry dla par".
+3.  **Sklepy (Retailers):** Empik, Smyk, Allegro, Ceneo, Auchan, Pepco, Media Markt + nazwa gry/kategorii.
+    * *Wyjątek:* Jeśli fraza zawiera MIASTO w kontekście sklepu stacjonarnego (np. "Empik Warszawa") -> **DISCARD**.
+4.  **AWARENESS / WSPARCIE (Nowość):** Frazy dotyczące zasad i obsługi gier z listy.
+    * Słowa kluczowe: "instrukcja", "zasady", "jak grać", "punktacja", "ile kart", "znaczenie kart".
+    * Dla gier słownych (Scrabble, Tajniacy): "słownik", "czy to słowo istnieje", "oficjalne słowa".
+
+### 4. LISTA ZAKAZANA (DISCARD):
+1.  **MONOPOLY GO / APKI:** "Go", "Dice", "Links", "Spins", "Apk", "Mod", "Hack", "Kod".
+2.  **KONKURENCJA (Unlisted):** Catan, Carcassonne, Brzdęk, Everdell, Talisman, Magia i Miecz, Eurobiznes, Superfarmer, 7 Cudów Świata, Terraformacja Marsa, Nemesis, Wiedźmin Stary Świat (Go On Board), Lego, Risk, Pandemic.
+3.  **STARE DATY:** Lata 2000-2023 (np. "ranking 2022").
+4.  **GRY WIDEO:** Online, PC, PS4, PS5, Xbox, Steam, Android, Telefon, Tablet, Pobierz, Graj teraz.
+5.  **HAZARD / KLASYKI:** Lotto, Poker, Brydż, Remik (karty), Pasjans, Szachy, Warcaby.
+6.  **SPORT / ZABAWKI:** Piłka nożna (chyba że Monopoly), Samochody, Lalki, Pluszaki.
+7.  **DIY / SZKOŁA / OSZUKIWANIE:**
+    * "Jak zrobić (samemu)" -> DISCARD (DIY).
+    * "Generator słów" / "Solver" -> DISCARD (Oszukiwanie/Narzędzie zewnętrzne).
+    * "Scenariusz lekcji", "WF", "Krzyżówka" -> DISCARD.
+
+### 5. PRZYKŁADY (FEW-SHOT LEARNING):
+* "rummikub smyk" -> **KEEP** (Target Game + Retailer)
+* "trefl gry edukacyjne" -> **KEEP** (Brand z listy + Kategoria)
+* "jak grać w uno" -> **KEEP** (Awareness/Rules)
+* "monopoly go free dice" -> **DISCARD** (Monopoly Go App)
+* "gra w statki" -> **DISCARD** (Klasyk/Konkurencja)
+
+### WAŻNE - FORMAT ODPOWIEDZI:
+Musisz zwrócić prosty obiekt JSON (słownik), gdzie:
+- KLUCZEM jest analizowana fraza (dokładnie taka jak na wejściu).
+- WARTOŚCIĄ jest string w formacie: "STATUS - Uzasadnienie".
+Nie używaj tablic "items", zwracaj płaską strukturę klucz-wartość.
+""",
+                "user": """Przeanalizuj poniższe słowa kluczowe:
+{input}
+
+Zwróć wynik jako JSON w formacie:
+{{
+  "fraza wejściowa 1": "KEEP - Powód decyzji...",
+  "fraza wejściowa 2": "DISCARD - Powód decyzji..."
+}}"""
             }
         ]
         
