@@ -1,329 +1,213 @@
 import streamlit as st
-import pandas as pd
 import requests
-from bs4 import BeautifulSoup
-from openai import OpenAI
 import json
 import bcrypt
+import logging
+import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from bs4 import BeautifulSoup
+from openai import OpenAI
 from sklearn.metrics.pairwise import cosine_similarity
+import time
 import os
 
-# --- 1. TO MUSI BYĆ PIERWSZE ---
+# --- KONFIGURACJA LOGOWANIA (Z Twojego działającego skryptu) ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
+
+# 1. KONFIGURACJA STRONY
 st.set_page_config(
-    page_title="🕵️ SEO Matrix Analyzer", 
+    page_title="SEO Matrix Analyzer", 
     page_icon="🕵️",
     layout="wide"
 )
 
-# --- 2. AUTOMATYCZNE TWORZENIE HASŁA (NAPRAWA BŁĘDU) ---
+# ==========================================
+# KONFIGURACJA UWIERZYTELNIANIA (Z Twojego działającego skryptu)
+# ==========================================
 USER_DATA_PATH = 'users.json'
 
-def ensure_users_file_exists():
-    """Tworzy plik users.json, jeśli go brakuje."""
-    if not os.path.exists(USER_DATA_PATH):
-        # Generujemy hasło: admin
-        hashed = bcrypt.hashpw("admin".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        data = {"users": {"admin": hashed}}
-        try:
-            with open(USER_DATA_PATH, 'w') as f:
-                json.dump(data, f)
-            return True
-        except Exception as e:
-            st.error(f"Błąd zapisu pliku: {e}")
-            return False
-    return False
-
-# --- 3. SYSTEM LOGOWANIA ---
 def check_password(hashed_password, user_password):
     return bcrypt.checkpw(user_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
-def login_screen():
-    created_new = ensure_users_file_exists()
-    
-    # Próba odczytu pliku
+def load_users():
     try:
         with open(USER_DATA_PATH, 'r') as file:
-            users = json.load(file)['users']
-    except Exception:
-        # Jeśli plik jest uszkodzony, nadpisujemy go
-        ensure_users_file_exists()
-        with open(USER_DATA_PATH, 'r') as file:
-            users = json.load(file)['users']
+            users = json.load(file)
+        return users['users']
+    except FileNotFoundError:
+        st.error(f"Nie znaleziono pliku {USER_DATA_PATH}. Upewnij się, że plik istnieje.")
+        return {}
+    except Exception as e:
+        st.error(f"Błąd odczytu pliku użytkowników: {e}")
+        return {}
 
-    # Jeśli utworzono nowy plik, pokaż komunikat
-    if created_new:
-        st.warning("⚠️ Stworzono nowy plik haseł.")
-        st.info("Login: **admin** | Hasło: **admin**")
-
-    st.title("🔐 Zaloguj się")
+def login(users):
+    st.title("🔐 Logowanie do SEO Matrix")
+    username = st.text_input("Nazwa użytkownika")
+    password = st.text_input("Hasło", type="password")
     
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        username = st.text_input("Użytkownik")
-        password = st.text_input("Hasło", type="password")
-        
-        if st.button("Zaloguj", type="primary"):
-            if username in users and check_password(users[username], password):
-                st.session_state['logged_in'] = True
-                st.session_state['username'] = username
-                st.rerun()
-            else:
-                st.error("Błędne dane.")
+    if st.button("Zaloguj"):
+        if username in users and check_password(users[username], password):
+            st.session_state['logged_in'] = True
+            st.session_state['username'] = username
+            st.success("Zalogowano pomyślnie!")
+            st.rerun()
+        else:
+            st.error("Nieprawidłowa nazwa użytkownika lub hasło")
 
-# Sprawdzenie stanu logowania
+def logout():
+    st.session_state['logged_in'] = False
+    st.session_state['username'] = None
+    # Czyścimy dane Matrixa przy wylogowaniu
+    keys_to_remove = ['analysis_done', 'matrix', 'valid_urls_data']
+    for key in keys_to_remove:
+        if key in st.session_state:
+            del st.session_state[key]
+    st.rerun()
+
+# ==========================================
+# LOGIKA LOGOWANIA (GŁÓWNY PRZEPŁYW)
+# ==========================================
+
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
+users = load_users()
+
 if not st.session_state['logged_in']:
-    login_screen()
-    st.stop()  # ZATRZYMUJE KOD TU, JEŚLI NIE ZALOGOWANO
+    login(users)
+    st.stop()
 
-# ==========================================
-# 3. INTERFEJS UŻYTKOWNIKA (SIDEBAR)
-# ==========================================
-
-st.sidebar.title(f"👤 {st.session_state.get('username', 'User')}")
+# --- PASEK BOCZNY (SIDEBAR) ---
+st.sidebar.title(f"👤 {st.session_state['username']}")
 if st.sidebar.button("Wyloguj"):
     logout()
 
 st.sidebar.markdown("---")
-st.sidebar.header("⚙️ Konfiguracja")
+st.sidebar.header("⚙️ Konfiguracja Matrixa")
 
 # Klucz API
-api_key = st.sidebar.text_input("OpenAI API Key", type="password", help="Podaj klucz, jeśli nie jest ustawiony w secrets.")
+api_key = st.sidebar.text_input("OpenAI API Key", type="password")
 if not api_key:
-    # Próba pobrania ze zmiennych środowiskowych lub secrets
     try:
         api_key = st.secrets["OPENAI_API_KEY"]
     except:
         api_key = os.environ.get("OPENAI_API_KEY")
 
-# Suwak progu (THRESHOLD)
-threshold = st.sidebar.slider(
-    "Próg podobieństwa", 
-    min_value=0.0, 
-    max_value=1.0, 
-    value=0.5, 
-    step=0.05,
-    help="Pary powyżej tej wartości zostaną oznaczone jako duplikaty."
-)
+# Suwak
+threshold = st.sidebar.slider("Próg podobieństwa", 0.0, 1.0, 0.5, 0.05)
 
-st.sidebar.markdown("---")
-st.sidebar.info("Aplikacja do analizy kanibalizacji treści (Semantic SEO).")
 
 # ==========================================
-# 4. FUNKCJE ANALIZY (BACKEND)
+# FUNKCJE MATRIXA (BACKEND)
 # ==========================================
 
-# Dekorator cache - zapobiega ponownemu scrapowaniu tych samych URLi przy zmianie suwaka
 @st.cache_data(show_spinner=False)
 def extract_clean_text(url):
-    """Scraper wycinający menu i stopki."""
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200: return None
-
         soup = BeautifulSoup(response.content, 'html.parser')
-
-        # Usuwamy techniczne
-        for element in soup(["script", "style", "nav", "footer", "header", "aside", "form", "iframe", "noscript", "svg"]):
+        for element in soup(["script", "style", "nav", "footer", "header", "form"]):
             element.decompose()
-
-        text = soup.get_text(separator='\n')
-        lines = text.split('\n')
-        clean_lines = []
-
-        for line in lines:
-            line = line.strip()
-            if len(line) < 30: continue
-            garbage_words = ["wszelkie prawa", "copyright", "polityka prywatności", "pliki cookies", "zobacz więcej", "czytaj dalej", "sprawdź ofertę", "menu stopki", "mapa witryny"]
-            if any(word in line.lower() for word in garbage_words): continue
-            clean_lines.append(line)
-
-        final_text = ' '.join(clean_lines)
-        # Fallback jeśli czyszczenie usunęło za dużo
-        if len(final_text) < 100: 
-            raw_text = soup.get_text(separator=' ')
-            return raw_text[:5000] 
-            
-        return final_text[:20000]
+        text = ' '.join(soup.get_text(separator=' ').split())
+        return text[:20000] if len(text) > 100 else None
     except Exception as e:
-        logger.error(f"Błąd scrapowania {url}: {e}")
+        logger.error(f"Błąd url {url}: {e}")
         return None
 
-def get_embedding(text, client, model="text-embedding-3-large"):
+def get_embedding(text, client):
     text = text.replace("\n", " ")
-    return client.embeddings.create(input=[text], model=model).data[0].embedding
+    return client.embeddings.create(input=[text], model="text-embedding-3-large").data[0].embedding
 
 def perform_analysis(url_list_raw, api_key_val):
-    """Główna funkcja wykonująca analizę."""
     client = OpenAI(api_key=api_key_val)
-    
     urls = [line.strip() for line in url_list_raw.split('\n') if line.strip()]
     
-    if not urls:
-        st.error("Lista URLi jest pusta!")
-        return None
+    if not urls: return None
 
     progress_bar = st.progress(0)
-    status_text = st.empty()
-    
     data_list = []
     embeddings = []
     
-    total = len(urls)
-    
-    # ETAP 1: Scraping i Wektoryzacja
     for i, url in enumerate(urls):
-        status_text.text(f"Analizuję ({i+1}/{total}): {url}")
         text = extract_clean_text(url)
-        
-        if text and len(text) > 100:
+        if text:
             try:
                 emb = get_embedding(text, client)
                 embeddings.append(emb)
-                
-                short_name = url.rstrip('/').split('/')[-1]
-                if not short_name: short_name = url # Fallback dla domeny głównej
-                short_name = short_name[:25] + "..." if len(short_name) > 25 else short_name
-                
-                data_list.append({
-                    'url': url,
-                    'short_name': short_name,
-                    'text_preview': text[:200]
-                })
+                data_list.append({'url': url, 'short_name': url.split('/')[-1][:25]})
             except Exception as e:
-                st.warning(f"Błąd API dla {url}: {e}")
-        else:
-            st.warning(f"Pominięto (brak treści): {url}")
-        
-        progress_bar.progress((i + 1) / total)
-        time.sleep(0.1) 
+                st.warning(f"Błąd API: {e}")
+        progress_bar.progress((i + 1) / len(urls))
+        time.sleep(0.05)
 
-    status_text.text("Obliczam podobieństwo...")
-    
     if len(embeddings) < 2:
-        st.error("Za mało danych do porównania (wymagane min. 2 poprawne URLe).")
+        st.error("Za mało danych.")
         return None
 
-    # ETAP 2: Macierz
     matrix = cosine_similarity(embeddings)
-    
-    return {
-        "matrix": matrix,
-        "data": data_list
-    }
+    return {"matrix": matrix, "data": data_list}
 
 # ==========================================
-# 5. GŁÓWNY WIDOK APLIKACJI
+# APLIKACJA WŁAŚCIWA (MATRIX)
 # ==========================================
 
 st.title("🕵️ Masowa Analiza Podobieństwa (Matrix)")
-st.markdown("Wklej listę adresów URL, aby znaleźć duplikaty i kanibalizację treści.")
+st.markdown("To jest moduł analizy kanibalizacji (uruchomiony na silniku Senuto Checkera).")
 
-# Zmiana: Usunięto domyślne URLe. Teraz pole jest puste i czeka na wklejenie danych przez użytkownika.
 url_input = st.text_area(
     "Lista URLi (jeden pod drugim):", 
     height=200, 
-    placeholder="https://twojastrona.pl/\nhttps://twojastrona.pl/oferta\nhttps://twojastrona.pl/blog/artykul-1",
-    help="Wklej każdy adres URL w nowej linii."
+    placeholder="https://site.pl/a\nhttps://site.pl/b"
 )
 
-col_act1, col_act2 = st.columns([1, 4])
-with col_act1:
-    run_btn = st.button("🚀 Uruchom Analizę", type="primary")
-
-# Obsługa przycisku START
-if run_btn:
-    # Walidacja: Sprawdzamy, czy pole nie jest puste
+if st.button("🚀 Uruchom Analizę", type="primary"):
     if not url_input.strip():
-        st.error("⚠️ Pole z adresami URL jest puste! Wklej listę adresów, aby kontynuować.")
+        st.warning("Pusta lista URLi.")
     elif not api_key:
-        st.error("❌ Brak klucza API OpenAI! Ustaw go w pasku bocznym.")
+        st.error("Brak klucza API OpenAI (ustaw w Sidebarze).")
     else:
-        with st.spinner("Pobieranie stron i generowanie wektorów..."):
+        with st.spinner("Przetwarzanie..."):
             result = perform_analysis(url_input, api_key)
-            
             if result:
                 st.session_state['analysis_done'] = True
                 st.session_state['matrix'] = result['matrix']
                 st.session_state['valid_urls_data'] = result['data']
 
-# ==========================================
-# 6. WYNIKI I RAPORTOWANIE
-# ==========================================
-
+# --- WYNIKI ---
 if st.session_state.get('analysis_done'):
-    
     matrix = st.session_state['matrix']
-    data_items = st.session_state['valid_urls_data']
-    labels = [d['short_name'] for d in data_items]
-    full_urls = [d['url'] for d in data_items]
+    data = st.session_state['valid_urls_data']
+    labels = [d['short_name'] for d in data]
+    urls = [d['url'] for d in data]
 
-    st.markdown("---")
+    st.divider()
     
-    # --- A. HEATMAPA ---
-    st.subheader("1. Mapa Ciepła (Heatmap)")
-    
-    fig, ax = plt.subplots(figsize=(12, 10))
-    sns.heatmap(matrix, xticklabels=labels, yticklabels=labels, cmap="Greens", annot=True, fmt=".2f", ax=ax)
-    plt.xticks(rotation=45, ha="right")
-    plt.title("Macierz Podobieństwa Semantycznego")
+    # 1. Heatmapa
+    st.subheader("1. Mapa Ciepła")
+    fig, ax = plt.subplots(figsize=(10, 8))
+    sns.heatmap(matrix, xticklabels=labels, yticklabels=labels, cmap="Greens", annot=True, fmt=".2f")
     st.pyplot(fig)
 
-    # --- B. PRZETWARZANIE DANYCH POD SUWAK ---
-    st.subheader(f"2. Raport Par (Próg >= {threshold})")
-    
+    # 2. Tabela
+    st.subheader(f"2. Pary > {threshold}")
     pairs = []
-    all_pairs = []
-
     for i in range(len(matrix)):
-        for j in range(i + 1, len(matrix)):
-            score = matrix[i][j]
-            
-            # Pełna lista
-            all_pairs.append([full_urls[i], full_urls[j], score])
-            
-            # Lista filtrowana
-            if score >= threshold:
-                pairs.append([full_urls[i], full_urls[j], score])
-
-    # --- WIDOK TABELI ---
+        for j in range(i+1, len(matrix)):
+            if matrix[i][j] >= threshold:
+                pairs.append([urls[i], urls[j], matrix[i][j]])
+    
     if pairs:
-        df_pairs = pd.DataFrame(pairs, columns=["URL A", "URL B", "Score"])
-        df_pairs = df_pairs.sort_values(by="Score", ascending=False)
-        
-        # Kolorowanie wyników w tabeli
-        st.dataframe(
-            df_pairs.style.background_gradient(subset=['Score'], cmap="Greens", vmin=0, vmax=1),
-            use_container_width=True
-        )
-        
-        # Pobieranie CSV Filtrowanego
-        csv_filtered = df_pairs.to_csv(index=False, sep=";").encode('utf-8-sig')
-        st.download_button(
-            label=f"💾 Pobierz pary > {threshold} (CSV)",
-            data=csv_filtered,
-            file_name="znalezione_duplikaty.csv",
-            mime="text/csv"
-        )
+        df = pd.DataFrame(pairs, columns=["A", "B", "Score"]).sort_values("Score", ascending=False)
+        st.dataframe(df.style.background_gradient(cmap="Greens"))
     else:
-        st.info(f"✅ Brak par o podobieństwie powyżej {threshold}. Twoje treści są unikalne!")
-
-    # --- POBIERANIE PEŁNEGO RAPORTU ---
-    st.markdown("---")
-    st.subheader("3. Pełny zrzut danych")
-    
-    df_all = pd.DataFrame(all_pairs, columns=["URL A", "URL B", "Score"])
-    csv_all = df_all.to_csv(index=False, sep=";").encode('utf-8-sig')
-    
-    st.download_button(
-        label="💾 Pobierz PEŁNĄ macierz (wszystkie pary)",
-        data=csv_all,
-        file_name="pelny_raport_matrix.csv",
-        mime="text/csv"
-    )
+        st.info("Brak duplikatów.")
