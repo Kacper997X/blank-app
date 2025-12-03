@@ -3,88 +3,83 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from openai import OpenAI
-import logging
 import json
 import bcrypt
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity
-import time
 import os
 
-# ==========================================
-# 1. KONFIGURACJA STRONY
-# ==========================================
+# --- 1. TO MUSI BYĆ PIERWSZE ---
 st.set_page_config(
     page_title="🕵️ SEO Matrix Analyzer", 
     page_icon="🕵️",
     layout="wide"
 )
 
-# Konfiguracja logowania zdarzeń
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
-)
-logger = logging.getLogger(__name__)
+# --- 2. AUTOMATYCZNE TWORZENIE HASŁA (NAPRAWA BŁĘDU) ---
+USER_DATA_PATH = 'users.json'
 
-# ==========================================
-# 2. UWIERZYTELNIANIE (BCRYPT)
-# ==========================================
-USER_DATA_PATH = 'users.json'  # Ścieżka do pliku z użytkownikami
+def ensure_users_file_exists():
+    """Tworzy plik users.json, jeśli go brakuje."""
+    if not os.path.exists(USER_DATA_PATH):
+        # Generujemy hasło: admin
+        hashed = bcrypt.hashpw("admin".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        data = {"users": {"admin": hashed}}
+        try:
+            with open(USER_DATA_PATH, 'w') as f:
+                json.dump(data, f)
+            return True
+        except Exception as e:
+            st.error(f"Błąd zapisu pliku: {e}")
+            return False
+    return False
 
+# --- 3. SYSTEM LOGOWANIA ---
 def check_password(hashed_password, user_password):
     return bcrypt.checkpw(user_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
-def load_users():
+def login_screen():
+    created_new = ensure_users_file_exists()
+    
+    # Próba odczytu pliku
     try:
         with open(USER_DATA_PATH, 'r') as file:
-            users = json.load(file)
-        return users['users']
-    except FileNotFoundError:
-        st.error(f"⚠️ Nie znaleziono pliku {USER_DATA_PATH}. Stwórz go, aby się zalogować.")
-        return {}
-    except Exception as e:
-        st.error(f"Błąd odczytu pliku użytkowników: {e}")
-        return {}
+            users = json.load(file)['users']
+    except Exception:
+        # Jeśli plik jest uszkodzony, nadpisujemy go
+        ensure_users_file_exists()
+        with open(USER_DATA_PATH, 'r') as file:
+            users = json.load(file)['users']
 
-def login(users):
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        st.title("🔐 Logowanie")
-        username = st.text_input("Nazwa użytkownika")
+    # Jeśli utworzono nowy plik, pokaż komunikat
+    if created_new:
+        st.warning("⚠️ Stworzono nowy plik haseł.")
+        st.info("Login: **admin** | Hasło: **admin**")
+
+    st.title("🔐 Zaloguj się")
+    
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        username = st.text_input("Użytkownik")
         password = st.text_input("Hasło", type="password")
         
-        if st.button("Zaloguj"):
+        if st.button("Zaloguj", type="primary"):
             if username in users and check_password(users[username], password):
                 st.session_state['logged_in'] = True
                 st.session_state['username'] = username
-                st.success("Zalogowano pomyślnie!")
                 st.rerun()
             else:
-                st.error("Nieprawidłowa nazwa użytkownika lub hasło")
+                st.error("Błędne dane.")
 
-def logout():
-    st.session_state['logged_in'] = False
-    st.session_state['username'] = None
-    # Czyścimy dane sesji przy wylogowaniu
-    keys_to_remove = ['analysis_done', 'matrix', 'df_results', 'valid_urls_data']
-    for key in keys_to_remove:
-        if key in st.session_state:
-            del st.session_state[key]
-    st.rerun()
-
-# --- LOGIKA LOGOWANIA ---
+# Sprawdzenie stanu logowania
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
-users = load_users()
-
 if not st.session_state['logged_in']:
-    login(users)
-    st.stop() # Zatrzymaj renderowanie reszty aplikacji
+    login_screen()
+    st.stop()  # ZATRZYMUJE KOD TU, JEŚLI NIE ZALOGOWANO
 
 # ==========================================
 # 3. INTERFEJS UŻYTKOWNIKA (SIDEBAR)
