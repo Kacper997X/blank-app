@@ -5,8 +5,6 @@ import bcrypt
 import logging
 import pandas as pd
 import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
 from openai import OpenAI
 from sklearn.metrics.pairwise import cosine_similarity
@@ -197,27 +195,42 @@ if st.button("🚀 Uruchom Analizę", type="primary"):
 if st.session_state.get('analysis_done'):
     matrix = st.session_state['matrix']
     data = st.session_state['valid_urls_data']
-    labels = [d['short_name'] for d in data]
     urls = [d['url'] for d in data]
 
     st.divider()
     
-    # 1. Heatmapa
-    st.subheader("1. Mapa Ciepła")
-    fig, ax = plt.subplots(figsize=(10, 8))
-    sns.heatmap(matrix, xticklabels=labels, yticklabels=labels, cmap="Greens", annot=True, fmt=".2f")
-    st.pyplot(fig)
-
-    # 2. Tabela
-    st.subheader(f"2. Pary > {threshold}")
+    # 1. Obliczanie par (logika przeniesiona wyżej, bez rysowania mapy)
     pairs = []
     for i in range(len(matrix)):
         for j in range(i+1, len(matrix)):
             if matrix[i][j] >= threshold:
-                pairs.append([urls[i], urls[j], matrix[i][j]])
+                pairs.append({
+                    "URL A": urls[i],
+                    "URL B": urls[j],
+                    "Score": round(matrix[i][j], 4)
+                })
     
+    # 2. Wyświetlanie tabeli i przycisku
     if pairs:
-        df = pd.DataFrame(pairs, columns=["A", "B", "Score"]).sort_values("Score", ascending=False)
-        st.dataframe(df.style.background_gradient(cmap="Greens"))
+        st.subheader(f"Znaleziono {len(pairs)} par z podobieństwem > {threshold}")
+        
+        df = pd.DataFrame(pairs).sort_values("Score", ascending=False)
+        
+        # Wyświetlamy tabelę
+        st.dataframe(
+            df.style.background_gradient(cmap="Greens", subset=["Score"]),
+            use_container_width=True
+        )
+
+        # Generujemy CSV
+        csv = df.to_csv(index=False).encode('utf-8')
+
+        # Przycisk pobierania
+        st.download_button(
+            label="📥 Pobierz wynik jako CSV",
+            data=csv,
+            file_name='wyniki_seo_matrix.csv',
+            mime='text/csv',
+        )
     else:
-        st.info("Brak duplikatów.")
+        st.info(f"Brak par o podobieństwie powyżej {threshold}. Spróbuj zmniejszyć próg suwakiem.")
