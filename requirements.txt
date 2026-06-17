@@ -13,3 +13,4 @@ requests
 seaborn
 matplotlib
 plotly
+trafilatura
