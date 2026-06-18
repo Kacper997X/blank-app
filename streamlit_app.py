@@ -13,7 +13,7 @@ from docx import Document
 st.set_page_config(page_title="SEO Macerator & Semantic Tool", layout="wide")
 
 USER_DATA_PATH = 'users.json'
-AVAILABLE_MODELS = ["gpt-4o-mini", "gpt-5-mini", "gpt-5-nano"]
+AVAILABLE_MODELS = ["gpt-5.4-mini","gpt-4o-mini", "gpt-5-mini", "gpt-5-nano"]
 
 # --- DOMYŚLNY SZABLON HTML (Można go edytować w aplikacji) ---
 DEFAULT_HTML_TEMPLATE = """<!DOCTYPE html>
