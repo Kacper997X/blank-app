@@ -38,7 +38,7 @@ st.set_page_config(page_title="Internal Linking Planner", page_icon="🔗", layo
 require_login("Internal Linking")
 client = get_client()
 
-MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-5-mini"]
+MODELS = ["gpt-5.4-mini","gpt-4o-mini", "gpt-4o", "gpt-5-mini"]
 MAX_SRC_CHARS = 14000  # ile tekstu źródłowego wysyłamy do modelu (kontrola tokenów)
 
 st.title("🔗 Planer linkowania wewnętrznego")
